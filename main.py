@@ -1,6 +1,6 @@
 import pygame
 import sys
-from objeto import Objeto
+from objeto import Objeto  # Importamos a classe Objeto (com lista automática)
 
 # Inicializar pygame
 pygame.init()
@@ -20,7 +20,11 @@ COR_ESCURA = (30, 30, 30)
 PLAYER_TILES = 3
 player_size = TILE_SIZE * PLAYER_TILES
 player_vel = TILE_SIZE  # mover em passos de 1 tile
+
+# Colors
 player_cor = (255, 0, 0)
+border_cor = (80, 60, 60)
+object_cor = (0, 120, 0)
 
 # Posicionar o jogador centralizado e alinhado ao grid
 player_x = ((LARGURA // 2) // TILE_SIZE) * TILE_SIZE
@@ -28,9 +32,14 @@ player_y = ((ALTURA // 2) // TILE_SIZE) * TILE_SIZE
 player_x -= (player_size // 2) // TILE_SIZE * TILE_SIZE
 player_y -= (player_size // 2) // TILE_SIZE * TILE_SIZE
 
-# Criar bloco verde do mesmo tamanho do jogador
-bloco_verde = Objeto(400, 200, player_size)
-bloco_verde2 = Objeto(400, 320, player_size)
+# 🔹 Criar obstáculos (objetos verdes fixos)
+# Eles são automaticamente adicionados à lista Objeto.objetos
+upperBorder = Objeto(0, 0, 1280, 60, cor=border_cor)
+bottomBorder = Objeto(0, 660, 1280, 60, cor=border_cor)
+leftBorder = Objeto(0, 0, 60, 720, cor=border_cor)
+rightBorder = Objeto(1220, 0, 60, 720, cor=border_cor)
+bloco1 = Objeto(120, 120, player_size, cor=object_cor)
+bloco2 = Objeto(480, 120, player_size, cor=object_cor)
 
 # Controlador de tempo de movimento
 move_delay = 100  # ms entre passos
@@ -67,14 +76,17 @@ while True:
         # Criar rect futuro para colisão
         futuro_rect = pygame.Rect(futuro_x, futuro_y, player_size, player_size)
 
-        # Só mover se não colidir com o bloco verde
-        if not bloco_verde.colidir(futuro_rect):
+        # 🔹 Agora verificamos colisão com *qualquer* objeto da classe
+        colisao = Objeto.verificar_colisao_com_player(futuro_rect)
+
+        # Só mover se não houver colisão
+        if not colisao:
             player_x = futuro_x
             player_y = futuro_y
 
         last_move_time = 0
 
-        # Limites da janela
+        # Limites da janela (para o jogador não sair da tela)
         if player_x < 0:
             player_x = 0
         if player_x + player_size > LARGURA:
@@ -93,9 +105,9 @@ while True:
                 cor = COR_ESCURA
             pygame.draw.rect(JANELA, cor, (coluna, linha, TILE_SIZE, TILE_SIZE))
 
-    # 🔹 Desenhar bloco verde
-    bloco_verde.draw(JANELA)
-    bloco_verde2.draw(JANELA)
+    # 🔹 Desenhar todos os obstáculos criados automaticamente
+    for obj in Objeto.objetos:
+        obj.draw(JANELA)
 
     # 🔹 Desenhar jogador
     pygame.draw.rect(JANELA, player_cor, (player_x, player_y, player_size, player_size))
