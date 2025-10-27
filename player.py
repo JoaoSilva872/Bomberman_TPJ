@@ -17,7 +17,7 @@ class Player:
         self.direccion_actual = 'down'
         self.frame_actual = 0
         self.ultimo_cambio_animacion = 0
-        self.velocidad_animacion = 200
+        self.velocidad_animacion = 350
         self.esta_moviendose = False
         
         # Cargar sprites

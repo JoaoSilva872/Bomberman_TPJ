@@ -1,14 +1,14 @@
 import pygame
 
 class Object:
-    objects = []  # Cambiado de 'objetos' a 'objects'
+    objects = []
 
     def __init__(self, x, y, largura, altura=None, cor=(0, 255, 0)):
         if altura is None:
             altura = largura
         self.rect = pygame.Rect(x, y, largura, altura)
         self.cor = cor
-        Object.objects.append(self)  # Cambiado a Object.objects
+        Object.objects.append(self) 
 
     def draw(self, surface):
         pygame.draw.rect(surface, self.cor, self.rect)
