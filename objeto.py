@@ -1,19 +1,25 @@
 import pygame
 
 class Objeto:
-    def __init__(self, x, y, tamanho, cor=(0, 255, 0)):
-        """
-        x, y: coordenadas do objeto
-        tamanho: largura e altura
-        cor: cor do objeto
-        """
-        self.rect = pygame.Rect(x, y, tamanho, tamanho)
+    objetos = []  # lista de todas as instâncias
+
+    def __init__(self, x, y, largura, altura=None, cor=(0, 255, 0)):
+
+        if altura is None:
+            altura = largura  # se não passar altura, será quadrado
+        self.rect = pygame.Rect(x, y, largura, altura)
         self.cor = cor
+        Objeto.objetos.append(self)
 
     def draw(self, surface):
-        """Desenha o objeto na tela"""
         pygame.draw.rect(surface, self.cor, self.rect)
 
     def colidir(self, outro_rect):
-        """Retorna True se colidir com outro rect"""
         return self.rect.colliderect(outro_rect)
+
+    @classmethod
+    def verificar_colisao_com_player(cls, player_rect):
+        for obj in cls.objetos:
+            if obj.colidir(player_rect):
+                return obj
+        return None
