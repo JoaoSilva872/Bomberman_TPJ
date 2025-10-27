@@ -4,7 +4,6 @@ class Objeto:
     objetos = []  # lista de todas as instâncias
 
     def __init__(self, x, y, largura, altura=None, cor=(0, 255, 0)):
-
         if altura is None:
             altura = largura  # se não passar altura, será quadrado
         self.rect = pygame.Rect(x, y, largura, altura)
