@@ -17,7 +17,7 @@ class Player:
         self.direccion_actual = 'down'
         self.frame_actual = 0
         self.ultimo_cambio_animacion = 0
-        self.velocidad_animacion = 350
+        self.velocidad_animacion = 280
         self.esta_moviendose = False
         
         # Cargar sprites
@@ -44,7 +44,7 @@ class Player:
 
         for direccion in sprites.keys():
             for i in range(1,4):
-                ruta_imagen = os.path.join('images', f'bomberman_{direccion}_{i}.png')
+                ruta_imagen = os.path.join('playerSprites', f'bomberman_{direccion}_{i}.png')
                 sprite = cargar_sprite(ruta_imagen, (self.tamaño, self.tamaño))
                 sprites[direccion].append(sprite)
         
