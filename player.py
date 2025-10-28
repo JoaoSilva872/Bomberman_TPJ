@@ -43,7 +43,7 @@ class Player:
         }
 
         for direccion in sprites.keys():
-            for i in range(1,3):
+            for i in range(1,4):
                 ruta_imagen = os.path.join('images', f'bomberman_{direccion}_{i}.png')
                 sprite = cargar_sprite(ruta_imagen, (self.tamaño, self.tamaño))
                 sprites[direccion].append(sprite)
