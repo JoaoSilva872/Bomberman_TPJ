@@ -89,6 +89,19 @@ class Game:
             # ==================================================================
         
         return True
+    
+    # Desenhar vida na tela =================================================================
+    
+    def draw_lives(self):
+
+        font = pygame.font.Font(None, 36)  # fonte padrão
+        text = font.render(f"Player Lives: {self.jugador.life}x", True, (255, 255, 255))
+
+        # Centralizar horizontalmente e alinhar na parte inferior
+        text_rect = text.get_rect(center=(self.LARGURA // 2, self.ALTURA - 30))
+        self.JANELA.blit(text, text_rect)
+        
+    # ============================================================================
 
     def update(self, tiempo_actual):
         """Actualiza el estado del juego"""
@@ -132,8 +145,12 @@ class Game:
         # Dibujar jugador
         self.jugador.dibujar(self.JANELA, pygame.time.get_ticks() - self.tiempo_inicio)
         
+        # Desenhar vidas
+        self.draw_lives()
+        
         # Actualizar pantalla
         pygame.display.update()
+        
         
 
     def run(self):
