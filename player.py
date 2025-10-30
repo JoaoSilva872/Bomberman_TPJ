@@ -27,7 +27,8 @@ class Player:
         # Cargar sprites
         self.sprites = self.cargar_sprites()
         
-        
+# Health Sistem functions ================================================================
+
     def take_damage(self, number):
         """Reduce Life."""
         self.life -= number
@@ -43,7 +44,8 @@ class Player:
     def is_alive(self):
         """Returns true if the player is alive."""
         return self.life > 0
-        
+    
+# ==========================================================================================
 
     def cargar_sprites(self):
         """Carga los sprites del jugador"""

@@ -73,7 +73,7 @@ class Game:
                     self.bomba_presionada = False
                     
             
-            #Testing ========================================================
+            #Testing Life system ========================================================
             
             if event.type == pygame.KEYDOWN:
                 # Tecla K → jogador leva 1 de dano
@@ -85,6 +85,8 @@ class Game:
                 elif event.key == pygame.K_h:
                     self.jugador.heal(self.jugador.life_max)
                     print(f"Player heald! Life: {self.jugador.life}/{self.jugador.life_max}")
+                    
+            # ==================================================================
         
         return True
 
