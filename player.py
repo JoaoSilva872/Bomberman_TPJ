@@ -13,6 +13,10 @@ class Player:
         self.x -= (tamaño // 2) // (tamaño // 3) * (tamaño // 3)
         self.y -= (tamaño // 2) // (tamaño // 3) * (tamaño // 3)
         
+        # Vida
+        self.life_max = 3
+        self.life = 3
+        
         # Animación
         self.direccion_actual = 'down'
         self.frame_actual = 0
@@ -22,6 +26,24 @@ class Player:
         
         # Cargar sprites
         self.sprites = self.cargar_sprites()
+        
+        
+    def take_damage(self, number):
+        """Reduce Life."""
+        self.life -= number
+        if self.life < 0:
+            self.life = 0
+            
+    def heal(self, number):
+        """Restores life"""
+        self.life += number
+        if self.life > self.life_max:
+            self.life = self.life_max
+    
+    def is_alive(self):
+        """Returns true if the player is alive."""
+        return self.life > 0
+        
 
     def cargar_sprites(self):
         """Carga los sprites del jugador"""

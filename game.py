@@ -29,6 +29,8 @@ class Game:
         # Inicializar componentes
         self.mapa = Map(self.LARGURA, self.ALTURA, self.TILE_SIZE, self.COR_CLARA, self.COR_ESCURA)
         self.jugador = Player(self.LARGURA, self.ALTURA, self.player_size, self.player_vel)
+        self.jugador.life_max = 3
+        self.jugador.life = 3
         self.bombas = []
         
         # Crear obstáculos
@@ -69,6 +71,20 @@ class Game:
             if event.type == pygame.KEYUP:
                 if event.key == pygame.K_b:
                     self.bomba_presionada = False
+                    
+            
+            #Testing ========================================================
+            
+            if event.type == pygame.KEYDOWN:
+                # Tecla K → jogador leva 1 de dano
+                if event.key == pygame.K_k:
+                    self.jugador.take_damage(1)
+                    print(f"Player take damage! Life: {self.jugador.life}/{self.jugador.life_max}")
+
+                # Tecla H → jogador recupera toda a vida
+                elif event.key == pygame.K_h:
+                    self.jugador.heal(self.jugador.life_max)
+                    print(f"Player heald! Life: {self.jugador.life}/{self.jugador.life_max}")
         
         return True
 
@@ -116,6 +132,7 @@ class Game:
         
         # Actualizar pantalla
         pygame.display.update()
+        
 
     def run(self):
         """Bucle principal del juego"""
