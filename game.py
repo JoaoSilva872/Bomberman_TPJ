@@ -54,6 +54,13 @@ class Game:
         Object(120, 120, self.player_size, cor=self.object_cor)
         Object(480, 120, self.player_size, cor=self.object_cor)
 
+    def ajustar_a_grid(self, x, y):
+        """Ajusta las coordenadas a la cuadrícula de 3x3"""
+        grid_size = self.player_size  # 60 píxeles (3 tiles × 20 píxeles)
+        grid_x = (x // grid_size) * grid_size
+        grid_y = (y // grid_size) * grid_size
+        return grid_x, grid_y
+
     def handle_events(self):
         """Maneja los eventos del juego"""
         for event in pygame.event.get():
@@ -67,10 +74,12 @@ class Game:
                     
                     if not bomba_activa:
                         from bomba import Bomba
-                        nueva_bomba = Bomba(self.jugador.x, self.jugador.y, self.player_size)
+                        # Ajustar posición a la cuadrícula de 3x3
+                        grid_x, grid_y = self.ajustar_a_grid(self.jugador.x, self.jugador.y)
+                        nueva_bomba = Bomba(grid_x, grid_y, self.player_size)
                         self.bombas.append(nueva_bomba)
                         self.bomba_presionada = True
-                        print(f"Bomba colocada em ({self.jugador.x}, {self.jugador.y})")
+                        print(f"Bomba colocada em ({grid_x}, {grid_y})")
                     else:
                         print("Já há uma bomba ativa — espere ela explodir!")
 
@@ -134,7 +143,8 @@ class Game:
 
             # 🔹 Verifica se o tempo da bomba acabou → deve explodir
             if bomba.debe_explotar():
-                bomba.explotar()              # Cria a área da explosão (cruz vermelha)
+                # Pasar la lista de objetos para limitar la explosión
+                bomba.explotar(Object.objects)
                 bomba.causou_dano = False     # Marca que essa bomba ainda não causou dano ao jogador
 
             # 🔹 Se a explosão ainda está ativa (visível na tela)
