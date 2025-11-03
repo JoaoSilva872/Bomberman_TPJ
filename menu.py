@@ -29,7 +29,7 @@ class Menu:
         self.JANELA.fill(self.COR_FUNDO)
         
         # Título
-        titulo = self.fonte_titulo.render("BOMBER GAME", True, self.COR_TITULO)
+        titulo = self.fonte_titulo.render("Bomberman Game", True, self.COR_TITULO)
         titulo_rect = titulo.get_rect(center=(self.LARGURA // 2, self.ALTURA // 3))
         self.JANELA.blit(titulo, titulo_rect)
         

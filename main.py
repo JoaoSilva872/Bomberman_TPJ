@@ -7,9 +7,9 @@ def main():
     
     while True:
         menu = Menu()
-        if menu.executar():  # Se usuário escolheu iniciar jogo
+        if menu.executar(): 
             game = Game()
-            game.run()  # Quando o jogo terminar, volta automaticamente ao menu
+            game.run()  
 
 if __name__ == "__main__":
     main()
