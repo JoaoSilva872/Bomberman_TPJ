@@ -8,6 +8,7 @@ class Object:
             altura = largura
         self.rect = pygame.Rect(x, y, largura, altura)
         self.cor = cor
+        self.destructible = False  # Por defecto no es destructible
         Object.objects.append(self) 
 
     def draw(self, surface):
@@ -18,7 +19,7 @@ class Object:
 
     @classmethod
     def verificar_colisao_com_player(cls, player_rect):
-        for obj in cls.objects:  # Cambiado a cls.objects
+        for obj in cls.objects:
             if obj.colidir(player_rect):
                 return obj
         return None
