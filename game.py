@@ -123,6 +123,10 @@ class Game:
         
         # Actualizar bombas
         self.actualizar_bombas()
+        
+        # ⚠️ Se o jogador morrer → chama Game Over
+        if not self.jugador.is_alive():
+            self.game_over()
 
     def actualizar_bombas(self):
         """Actualiza el estado de las bombas"""
@@ -185,6 +189,26 @@ class Game:
         # Actualizar pantalla
         pygame.display.update()
         
+    # Game Over State ================================================================================
+    
+    def game_over(self):
+        """Mostra a tela de Game Over"""
+        fonte = pygame.font.Font(None, 100)
+        texto = fonte.render("GAME OVER", True, (255, 0, 0))
+        texto_rect = texto.get_rect(center=(self.LARGURA // 2, self.ALTURA // 2))
+
+        self.JANELA.fill((0, 0, 0))  # fundo preto
+        self.JANELA.blit(texto, texto_rect)
+        pygame.display.update()
+
+        print("💀 GAME OVER")
+
+        # Espera 2 segundos antes de fechar
+        pygame.time.wait(2000)
+        pygame.quit()
+        sys.exit()
+
+    # ==================================================================================================
         
 
     def run(self):
