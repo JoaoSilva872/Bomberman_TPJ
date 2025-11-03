@@ -32,19 +32,42 @@ class Bomba:
         """Verifica se deve explodir"""
         return time.time() - self.tiempo_creacion >= self.duracion and not self.explotada
 
-    def explotar(self):
-        """Cria a área da explosão"""
+    def explotar(self, objetos):
+        """Cria a área da explosão, respeitando obstáculos"""
         self.explotada = True
         self.tiempo_explosion = time.time()
 
         p = self.tamaño_jogador  # tamanho total do jogador (ex: 3 tiles)
-        self.explosion_tiles = [
-            pygame.Rect(self.x, self.y, p, p),               # centro
-            pygame.Rect(self.x + p, self.y, p, p),           # direita
-            pygame.Rect(self.x - p, self.y, p, p),           # esquerda
-            pygame.Rect(self.x, self.y - p, p, p),           # cima
-            pygame.Rect(self.x, self.y + p, p, p),           # baixo
+        self.explosion_tiles = []
+        
+        # Crear rectángulo de la bomba
+        bomba_rect = pygame.Rect(self.x, self.y, p, p)
+        
+        # Centro (siempre se muestra)
+        self.explosion_tiles.append(bomba_rect)
+        
+        # Verificar explosión en cada dirección
+        direcciones = [
+            (p, 0, "derecha"),   # derecha
+            (-p, 0, "izquierda"), # izquierda
+            (0, -p, "arriba"),    # arriba
+            (0, p, "abajo")       # abajo
         ]
+        
+        for dx, dy, direccion in direcciones:
+            explosion_rect = pygame.Rect(self.x + dx, self.y + dy, p, p)
+            colision = False
+            
+            # Verificar colisión con objetos
+            for obj in objetos:
+                if explosion_rect.colliderect(obj.rect):
+                    colision = True
+                    break
+            
+            # Solo añadir si no hay colisión
+            if not colision:
+                self.explosion_tiles.append(explosion_rect)
+
         print("💥 Boom! Bomba explodiu!")
 
     def explosion_activa(self):
