@@ -61,15 +61,21 @@ class Game:
                 return False
             
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_b and not self.bomba_presionada:
-                    from bomba import Bomba
-                    nueva_bomba = Bomba(self.jugador.x, self.jugador.y, self.player_size)
-                    self.bombas.append(nueva_bomba)
-                    self.bomba_presionada = True
-                    print(f"Bomba colocada en ({self.jugador.x}, {self.jugador.y})")
-            
+                if event.key == pygame.K_SPACE and not self.bomba_presionada:
+                    # Verifica se já existe uma bomba ativa (não explodida)
+                    bomba_activa = any(not b.explotada for b in self.bombas)
+                    
+                    if not bomba_activa:
+                        from bomba import Bomba
+                        nueva_bomba = Bomba(self.jugador.x, self.jugador.y, self.player_size)
+                        self.bombas.append(nueva_bomba)
+                        self.bomba_presionada = True
+                        print(f"Bomba colocada em ({self.jugador.x}, {self.jugador.y})")
+                    else:
+                        print("Já há uma bomba ativa — espere ela explodir!")
+
             if event.type == pygame.KEYUP:
-                if event.key == pygame.K_b:
+                if event.key == pygame.K_SPACE:
                     self.bomba_presionada = False
                     
             
@@ -120,12 +126,40 @@ class Game:
 
     def actualizar_bombas(self):
         """Actualiza el estado de las bombas"""
+        # Cria uma lista temporária para armazenar bombas que devem ser removidas
         bombas_a_remover = []
+
+        # Percorre todas as bombas existentes no jogo
         for bomba in self.bombas:
+
+            # 🔹 Verifica se o tempo da bomba acabou → deve explodir
             if bomba.debe_explotar():
-                bomba.explotar()
+                bomba.explotar()              # Cria a área da explosão (cruz vermelha)
+                bomba.causou_dano = False     # Marca que essa bomba ainda não causou dano ao jogador
+
+            # 🔹 Se a explosão ainda está ativa (visível na tela)
+            if bomba.explosion_activa():
+                # Cria um retângulo representando a posição e tamanho do jogador
+                player_rect = pygame.Rect(self.jugador.x, self.jugador.y,
+                                        self.player_size, self.player_size)
+
+                # ✅ Garante que a bomba cause dano apenas uma vez
+                if not getattr(bomba, "causou_dano", False):
+                    # Verifica se o jogador está dentro de alguma parte da área da explosão
+                    for rect in bomba.explosion_tiles:
+                        if player_rect.colliderect(rect):
+                            # Se o jogador estiver dentro → perde 1 ponto de vida
+                            self.jugador.take_damage(1)
+                            # Marca que a bomba já causou dano (para não repetir)
+                            bomba.causou_dano = True
+                            print(f"🔥 Jogador atingido pela explosão! Vida: {self.jugador.life}")
+                            break  # Sai do loop, pois já aplicou o dano
+
+            #   a bomba é marcada para ser removida
+            if bomba.explotada and not bomba.explosion_activa():
                 bombas_a_remover.append(bomba)
-        
+
+        # 🔹 Remove do jogo todas as bombas que já terminaram sua animação de explosão
         for bomba in bombas_a_remover:
             self.bombas.remove(bomba)
 
