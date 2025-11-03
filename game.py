@@ -123,10 +123,6 @@ class Game:
         
         # Actualizar bombas
         self.actualizar_bombas()
-        
-        # ⚠️ Se o jogador morrer → chama Game Over
-        if not self.jugador.is_alive():
-            self.game_over()
 
     def actualizar_bombas(self):
         """Actualiza el estado de las bombas"""
@@ -192,21 +188,35 @@ class Game:
     # Game Over State ================================================================================
     
     def game_over(self):
-        """Mostra a tela de Game Over"""
-        fonte = pygame.font.Font(None, 100)
-        texto = fonte.render("GAME OVER", True, (255, 0, 0))
-        texto_rect = texto.get_rect(center=(self.LARGURA // 2, self.ALTURA // 2))
+        """Mostra a tela de Game Over e retorna ao menu"""
+        fonte_grande = pygame.font.Font(None, 100)
+        fonte_pequena = pygame.font.Font(None, 36)
+        
+        texto_game_over = fonte_grande.render("GAME OVER", True, (255, 0, 0))
+        texto_instrucao = fonte_pequena.render("Pressione qualquer tecla para voltar ao menu", True, (255, 255, 255))
+        
+        texto_game_over_rect = texto_game_over.get_rect(center=(self.LARGURA // 2, self.ALTURA // 2 - 50))
+        texto_instrucao_rect = texto_instrucao.get_rect(center=(self.LARGURA // 2, self.ALTURA // 2 + 50))
 
-        self.JANELA.fill((0, 0, 0))  # fundo preto
-        self.JANELA.blit(texto, texto_rect)
+        self.JANELA.fill((0, 0, 0))
+        self.JANELA.blit(texto_game_over, texto_game_over_rect)
+        self.JANELA.blit(texto_instrucao, texto_instrucao_rect)
         pygame.display.update()
 
-        print("💀 GAME OVER")
+        print("💀 GAME OVER - Voltando ao menu...")
 
-        # Espera 2 segundos antes de fechar
-        pygame.time.wait(2000)
-        pygame.quit()
-        sys.exit()
+        # Espera o jogador pressionar qualquer tecla
+        esperando = True
+        while esperando:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+                if event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
+                    esperando = False
+        
+        # Sempre volta ao menu (não reinicia o jogo)
+        return
 
     # ==================================================================================================
         
@@ -220,6 +230,11 @@ class Game:
             self.update(tiempo_actual)
             self.render()
             self.clock.tick(60)
+            
+            # ⚠️ Se o jogador morrer → chama Game Over
+            if not self.jugador.is_alive():
+                self.game_over()  # Quando terminar, volta ao menu automaticamente
+                return  # Sai do método run(), voltando para o main.py
         
         pygame.quit()
         sys.exit()
