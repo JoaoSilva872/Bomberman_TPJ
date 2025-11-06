@@ -25,6 +25,7 @@ class Game:
         # Colors
         self.border_cor = (80, 60, 60)
         self.object_cor = (0, 120, 0)
+        self.destructible_cor = (139, 69, 19)  # Marrom para objetos destrutíveis
         
         # Inicializar componentes
         self.mapa = Map(self.LARGURA, self.ALTURA, self.TILE_SIZE, self.COR_CLARA, self.COR_ESCURA)
@@ -36,7 +37,7 @@ class Game:
         # Crear obstáculos
         self.crear_obstaculos()
         
-        # Controladores de tiempo
+        # Controladores de tempo
         self.move_delay = 100
         self.last_move_time = 0
         self.clock = pygame.time.Clock()
@@ -47,12 +48,21 @@ class Game:
 
     def crear_obstaculos(self):
         """Crea los obstáculos del juego"""
-        Object(0, 0, 1280, 60, cor=self.border_cor)
-        Object(0, 660, 1280, 60, cor=self.border_cor)
-        Object(0, 0, 60, 720, cor=self.border_cor)
-        Object(1220, 0, 60, 720, cor=self.border_cor)
-        Object(120, 120, self.player_size, cor=self.object_cor)
-        Object(480, 120, self.player_size, cor=self.object_cor)
+        # Limpar objetos anteriores (se houver)
+        Object.objects.clear()
+        
+        # Obstáculos indestrutíveis (bordas)
+        Object(0, 0, 1280, 60, cor=self.border_cor, destrutivel=False)
+        Object(0, 660, 1280, 60, cor=self.border_cor, destrutivel=False)
+        Object(0, 0, 60, 720, cor=self.border_cor, destrutivel=False)
+        Object(1220, 0, 60, 720, cor=self.border_cor, destrutivel=False)
+        
+        # Obstáculos indestrutíveis internos
+        Object(120, 120, self.player_size, cor=self.object_cor, destrutivel=False)
+        Object(480, 120, self.player_size, cor=self.object_cor, destrutivel=False)
+        
+        # Obstáculos destrutíveis
+        Object(480, 180, self.player_size, cor=self.destructible_cor, destrutivel=True)
 
     def ajustar_a_grid(self, x, y):
         """Ajusta las coordenadas a la cuadrícula de 3x3"""
@@ -83,14 +93,7 @@ class Game:
                     else:
                         print("Já há uma bomba ativa — espere ela explodir!")
 
-            if event.type == pygame.KEYUP:
-                if event.key == pygame.K_SPACE:
-                    self.bomba_presionada = False
-                    
-            
-            #Testing Life system ========================================================
-            
-            if event.type == pygame.KEYDOWN:
+                #Testing Life system ========================================================
                 # Tecla K → jogador leva 1 de dano
                 if event.key == pygame.K_k:
                     self.jugador.take_damage(1)
@@ -101,22 +104,18 @@ class Game:
                     self.jugador.heal(self.jugador.life_max)
                     print(f"Player heald! Life: {self.jugador.life}/{self.jugador.life_max}")
                     
-            # ==================================================================
+            if event.type == pygame.KEYUP:
+                if event.key == pygame.K_SPACE:
+                    self.bomba_presionada = False
         
         return True
     
-    # Desenhar vida na tela =================================================================
-    
     def draw_lives(self):
-
-        font = pygame.font.Font(None, 36)  # fonte padrão
+        """Desenha a vida do jogador na tela"""
+        font = pygame.font.Font(None, 36)
         text = font.render(f"Player Lives: {self.jugador.life}x", True, (255, 255, 255))
-
-        # Centralizar horizontalmente e alinhar na parte inferior
         text_rect = text.get_rect(center=(self.LARGURA // 2, self.ALTURA - 30))
         self.JANELA.blit(text, text_rect)
-        
-    # ============================================================================
 
     def update(self, tiempo_actual):
         """Actualiza el estado del juego"""
@@ -132,71 +131,61 @@ class Game:
         
         # Actualizar bombas
         self.actualizar_bombas()
+        
+        # Atualizar objetos destrutíveis (NOVO)
+        Object.atualizar_objetos_destrutiveis(self.bombas)
 
     def actualizar_bombas(self):
         """Actualiza el estado de las bombas"""
-        # Cria uma lista temporária para armazenar bombas que devem ser removidas
         bombas_a_remover = []
 
-        # Percorre todas as bombas existentes no jogo
         for bomba in self.bombas:
-
-            # 🔹 Verifica se o tempo da bomba acabou → deve explodir
             if bomba.debe_explotar():
-                # Pasar la lista de objetos para limitar la explosión
                 bomba.explotar(Object.objects)
-                bomba.causou_dano = False     # Marca que essa bomba ainda não causou dano ao jogador
+                bomba.causou_dano = False
 
-            # 🔹 Se a explosão ainda está ativa (visível na tela)
             if bomba.explosion_activa():
-                # Cria um retângulo representando a posição e tamanho do jogador
                 player_rect = pygame.Rect(self.jugador.x, self.jugador.y,
                                         self.player_size, self.player_size)
 
-                # ✅ Garante que a bomba cause dano apenas uma vez
                 if not getattr(bomba, "causou_dano", False):
-                    # Verifica se o jogador está dentro de alguma parte da área da explosão
                     for rect in bomba.explosion_tiles:
                         if player_rect.colliderect(rect):
-                            # Se o jogador estiver dentro → perde 1 ponto de vida
                             self.jugador.take_damage(1)
-                            # Marca que a bomba já causou dano (para não repetir)
                             bomba.causou_dano = True
                             print(f"🔥 Jogador atingido pela explosão! Vida: {self.jugador.life}")
-                            break  # Sai do loop, pois já aplicou o dano
+                            break
 
-            #   a bomba é marcada para ser removida
             if bomba.explotada and not bomba.explosion_activa():
                 bombas_a_remover.append(bomba)
 
-        # 🔹 Remove do jogo todas as bombas que já terminaram sua animação de explosão
         for bomba in bombas_a_remover:
             self.bombas.remove(bomba)
 
     def render(self):
         """Renderiza todos los elementos del juego"""
-        # Dibujar mapa
+        # 1. Dibujar mapa (fundo)
         self.mapa.dibujar(self.JANELA)
         
-        # Dibujar obstáculos
-        for obj in Object.objects:  # Cambiado de Object.objetos a Object.objects
-            obj.draw(self.JANELA)
+        # 2. Dibujar obstáculos NÃO DESTRUÍDOS
+        for obj in Object.objects:
+            if not obj.destruido:  # Só desenha se não foi destruído
+                obj.draw(self.JANELA)
         
-        # Dibujar bombas
+        # 3. Dibujar bombas e EXPLOSÕES (por cima dos objetos destrutíveis)
         for bomba in self.bombas:
             bomba.dibujar(self.JANELA)
         
-        # Dibujar jugador
+        # 4. Dibujar jugador (por cima de tudo)
         self.jugador.dibujar(self.JANELA, pygame.time.get_ticks() - self.tiempo_inicio)
         
-        # Desenhar vidas
+        # 5. Desenhar vidas (UI)
         self.draw_lives()
         
         # Actualizar pantalla
         pygame.display.update()
+
         
-    # Game Over State ================================================================================
-    
     def game_over(self):
         """Mostra a tela de Game Over e retorna ao menu"""
         fonte_grande = pygame.font.Font(None, 100)
@@ -225,11 +214,7 @@ class Game:
                 if event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
                     esperando = False
         
-        # Sempre volta ao menu (não reinicia o jogo)
         return
-
-    # ==================================================================================================
-        
 
     def run(self):
         """Bucle principal del juego"""
@@ -243,8 +228,8 @@ class Game:
             
             # ⚠️ Se o jogador morrer → chama Game Over
             if not self.jugador.is_alive():
-                self.game_over()  # Quando terminar, volta ao menu automaticamente
-                return  # Sai do método run(), voltando para o main.py
+                self.game_over()
+                return
         
         pygame.quit()
         sys.exit()
