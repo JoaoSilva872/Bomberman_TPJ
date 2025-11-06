@@ -1,5 +1,6 @@
 import pygame
 import time
+import os
 
 class Bomba:
     def __init__(self, x, y, tamaño_jogador, duracion=3, tile_size=20):
@@ -15,16 +16,28 @@ class Bomba:
         self.explosion_dur = 0.5  # segundos que a explosão fica visível
         self.tiempo_explosion = None
         self.causou_dano = False  # Para controlar dano ao jogador
+        
+        # Carregar a imagem da bomba
+        try:
+            self.imagem_bomba = pygame.image.load(os.path.join('Object&Bomb_Sprites', 'bomb.png'))
+        except:
+            print("Erro: Não foi possível carregar a imagem bomb.png")
+            self.imagem_bomba = None
 
     def dibujar(self, superficie):
         """Desenha a bomba ou a área da explosão"""
         if not self.explotada:
-            centro_x = self.x + self.tamaño_jogador // 2
-            centro_y = self.y + self.tamaño_jogador // 2
-            radio = self.tamaño_jogador // 2 - 2
-            pygame.draw.circle(superficie, self.color, (centro_x, centro_y), radio)
-            pygame.draw.rect(superficie, (255, 0, 0),
-                            (centro_x - 3, centro_y - self.tamaño_jogador // 2, 6, 8))
+            if self.imagem_bomba:
+                # Desenhar a imagem da bomba
+                superficie.blit(self.imagem_bomba, (self.x, self.y))
+            else:
+                # Fallback: desenho original se a imagem não carregar
+                centro_x = self.x + self.tamaño_jogador // 2
+                centro_y = self.y + self.tamaño_jogador // 2
+                radio = self.tamaño_jogador // 2 - 2
+                pygame.draw.circle(superficie, self.color, (centro_x, centro_y), radio)
+                pygame.draw.rect(superficie, (255, 0, 0),
+                                (centro_x - 3, centro_y - self.tamaño_jogador // 2, 6, 8))
         else:
             for rect in self.explosion_tiles:
                 pygame.draw.rect(superficie, (255, 0, 0), rect)

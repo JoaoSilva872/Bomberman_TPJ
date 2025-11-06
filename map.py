@@ -13,16 +13,16 @@ class Map:
         self.levels = {
             "maze_21x12": [
                 "XXXXXXXXXXXXXXXXXXXXX",  # 21 colunas - linha 0
-                "X  DDDDDXDDDDDDXDD  X",  # linha 1
-                "X XDXDXDXDXDXDXXDXX X",  # linha 2
+                "X  DDDDDX    DDXDD  X",  # linha 1
+                "X XDXDXDXDX XDXXDXX X",  # linha 2
                 "XDXDDDXDXDXDXDDDDDDDX",   # linha 3
-                "XDXXDXXDDDDDDDXXXXXDX",   # linha 4
-                "XDDDDDDDXDXDXDDDDDDDX",   # linha 5
+                "XDXXDXXD     DXXXXXDX",   # linha 4
+                "XDDD   DXDXDXDDDDDDDX",   # linha 5
                 "XDXXXXXDXDXDXDDXDXXXX",    # linha 6
-                "XDDDDDDDDDXDXXDXDDDDX",   # linha 7
-                "XDXXXDXXDDDDDDDXXXDXX",    # linha 8
-                "XDDDDDDDDDXDDDDDDDDDX",   # linha 9
-                "XDXXDDXXDDXDDXXDDXXDX",   # linha 10
+                "XDDDDDDDDDXDXXDXD   X",   # linha 7
+                "XDXXXDXX DDDDDDXXXDXX",    # linha 8
+                "X    DDD DXDDD   DDDX",   # linha 9
+                "X XXDDXX DXDDXXDDXXDX",   # linha 10
                 "XXXXXXXXXXXXXXXXXXXXX"   # linha 11 - 12 linhas
             ]
         }
