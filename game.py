@@ -10,7 +10,7 @@ class Game:
         self.LARGURA = 1260
         self.ALTURA = 720
         self.JANELA = pygame.display.set_mode((self.LARGURA, self.ALTURA))
-        pygame.display.set_caption("Protótipo Bomber")
+        pygame.display.set_caption("Protótipo Bomber - Maze 21x11")
         
         # Configurações do tabuleiro
         self.TILE_SIZE = 20
@@ -22,11 +22,6 @@ class Game:
         self.player_size = self.TILE_SIZE * self.PLAYER_TILES
         self.player_vel = self.TILE_SIZE
         
-        # Colors
-        self.border_cor = (80, 60, 60)
-        self.object_cor = (0, 120, 0)
-        self.destructible_cor = (139, 69, 19)  # Marrom para objetos destrutíveis
-        
         # Inicializar componentes
         self.mapa = Map(self.LARGURA, self.ALTURA, self.TILE_SIZE, self.COR_CLARA, self.COR_ESCURA)
         self.jugador = Player(self.LARGURA, self.ALTURA, self.player_size, self.player_vel)
@@ -34,8 +29,8 @@ class Game:
         self.jugador.life = 3
         self.bombas = []
         
-        # Crear obstáculos através do mapa
-        self.mapa.crear_obstaculos()
+        # Crear obstáculos através do mapa (maze_21x11)
+        self.mapa.crear_obstaculos("maze_21x11")
         
         # Controladores de tempo
         self.move_delay = 100

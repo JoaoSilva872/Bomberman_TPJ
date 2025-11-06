@@ -8,6 +8,24 @@ class Map:
         self.tile_size = 60
         self.cor_clara = cor_clara
         self.cor_escura = cor_escura
+        
+        # Sistema de níveis - apenas maze_21x12
+        self.levels = {
+            "maze_21x12": [
+                "XXXXXXXXXXXXXXXXXXXXX",  # 21 colunas - linha 0
+                "X  DDDDDXDDDDDDXDD  X",  # linha 1
+                "X XDXDXDXDXDXDXXDXX X",  # linha 2
+                "XDXDDDXDXDXDXDDDDDDDX",   # linha 3
+                "XDXXDXXDDDDDDDXXXXXDX",   # linha 4
+                "XDDDDDDDXDXDXDDDDDDDX",   # linha 5
+                "XDXXXXXDXDXDXDDXDXXXX",    # linha 6
+                "XDDDDDDDDDXDXXDXDDDDX",   # linha 7
+                "XDXXXDXXDDDDDDDXXXDXX",    # linha 8
+                "XDDDDDDDDDXDDDDDDDDDX",   # linha 9
+                "XDXXDDXXDDXDDXXDDXXDX",   # linha 10
+                "XXXXXXXXXXXXXXXXXXXXX"   # linha 11 - 12 linhas
+            ]
+        }
     
     def dibujar(self, superficie):
         """Dibuja el mapa estilo ajedrez"""
@@ -19,22 +37,37 @@ class Map:
                     cor = self.cor_escura
                 pygame.draw.rect(superficie, cor, (coluna, linha, self.tile_size, self.tile_size))
     
-    def crear_obstaculos(self):
-        """Crea los obstáculos del juego"""
-        # Limpar objetos anteriores (se houver)
+    def crear_obstaculos(self, level_name="maze_21x12"):
+        """Crea obstáculos a partir do mapa definido - canto superior esquerdo"""
         Object.objects.clear()
         
-        # Obstáculos indestrutíveis (bordas)
-        Object(0, 0, 1280, 60, destrutivel=False)
-        Object(0, 660, 1280, 60, destrutivel=False)
-        Object(0, 0, 60, 720, destrutivel=False)
-        Object(1200, 0, 60, 720, destrutivel=False)
+        if level_name not in self.levels:
+            print(f"❌ Nível {level_name} não encontrado! Usando 'maze_21x12'.")
+            level_name = "maze_21x12"
         
+        level_map = self.levels[level_name]
         
-        # Obstáculos indestrutíveis internos
-        Object(120, 120, 60, 60, "Object&Bomb_Sprites/OBJ_ND.png", destrutivel=False)
-        
-        # Obstáculos destrutíveis
-        Object(480, 180, 60, 60, "Object&Bomb_Sprites/OBJ_D.png", destrutivel=True)
-        Object(540, 180, 60, 60, "Object&Bomb_Sprites/OBJ_D.png", destrutivel=True)
-        Object(600, 180, 60, 60, "Object&Bomb_Sprites/OBJ_D.png", destrutivel=True)
+        # Criar objetos a partir da matriz
+        for row, line in enumerate(level_map):
+            for col, char in enumerate(line):
+                x = col * self.tile_size
+                y = row * self.tile_size
+                
+                # Verificar se está dentro da tela
+                if 0 <= x < self.ancho and 0 <= y < self.alto:
+                    if char == 'X':  # Parede indestrutível
+                        Object(x, y, self.tile_size, self.tile_size, 
+                              "Object&Bomb_Sprites/OBJ_ND.png", destrutivel=False)
+                    elif char == 'D':  # Obstáculo destrutível
+                        Object(x, y, self.tile_size, self.tile_size, 
+                              "Object&Bomb_Sprites/OBJ_D.png", destrutivel=True)
+                    # Espaço vazio (' ') - não cria objeto
+                
+        print(f"✅ Nível '{level_name}' carregado:")
+        print(f"   - {len([obj for obj in Object.objects if not obj.destrutivel])} objetos indestrutíveis")
+        print(f"   - {len([obj for obj in Object.objects if obj.destrutivel])} objetos destrutíveis")
+        print(f"   - 4 áreas de spawn livres (2x2 tiles cada)")
+    
+    def get_available_levels(self):
+        """Retorna lista de níveis disponíveis"""
+        return list(self.levels.keys())
