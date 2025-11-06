@@ -14,8 +14,8 @@ class Game:
         
         # Configurações do tabuleiro
         self.TILE_SIZE = 20
-        self.COR_CLARA = (240, 240, 240)
-        self.COR_ESCURA = (30, 30, 30)
+        self.COR_CLARA = (0, 140, 0)
+        self.COR_ESCURA = (0, 120, 0)
         
         # Configurações do jogador
         self.PLAYER_TILES = 3

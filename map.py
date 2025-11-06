@@ -5,7 +5,7 @@ class Map:
     def __init__(self, ancho, alto, tile_size, cor_clara, cor_escura):
         self.ancho = ancho
         self.alto = alto
-        self.tile_size = 60
+        self.tile_size = tile_size
         self.cor_clara = cor_clara
         self.cor_escura = cor_escura
         
@@ -50,16 +50,16 @@ class Map:
         # Criar objetos a partir da matriz
         for row, line in enumerate(level_map):
             for col, char in enumerate(line):
-                x = col * self.tile_size
-                y = row * self.tile_size
+                x = col * self.tile_size*3
+                y = row * self.tile_size*3
                 
                 # Verificar se está dentro da tela
                 if 0 <= x < self.ancho and 0 <= y < self.alto:
                     if char == 'X':  # Parede indestrutível
-                        Object(x, y, self.tile_size, self.tile_size, 
+                        Object(x, y, self.tile_size*3, self.tile_size*3, 
                               "Object&Bomb_Sprites/OBJ_ND.png", destrutivel=False)
                     elif char == 'D':  # Obstáculo destrutível
-                        Object(x, y, self.tile_size, self.tile_size, 
+                        Object(x, y, self.tile_size*3, self.tile_size*3, 
                               "Object&Bomb_Sprites/OBJ_D.png", destrutivel=True)
                     # Espaço vazio (' ') - não cria objeto
                 
