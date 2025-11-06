@@ -18,7 +18,7 @@ class Object:
             self.carregar_imagem(imagem_path, largura, altura)
         else:
             # Fallback para cor sólida se a imagem não existir
-            self.cor = (0, 120, 0) if not destrutivel else (120, 60, 0)
+            self.cor = (50, 50, 50) if not destrutivel else (50, 50, 50)
             print(f"Aviso: Imagem {imagem_path} não encontrada. Usando cor sólida.")
         
         Object.objects.append(self)

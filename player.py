@@ -8,10 +8,8 @@ class Player:
         self.velocidad = velocidad
         
         # Posición inicial
-        self.x = ((ancho_ventana // 2) // (tamaño // 3)) * (tamaño // 3)
-        self.y = ((alto_ventana // 2) // (tamaño // 3)) * (tamaño // 3)
-        self.x -= (tamaño // 2) // (tamaño // 3) * (tamaño // 3)
-        self.y -= (tamaño // 2) // (tamaño // 3) * (tamaño // 3)
+        self.x = 60
+        self.y = 60
         
         # Vida
         self.life_max = 3

@@ -7,7 +7,7 @@ from object import Object
 class Game:
     def __init__(self):
         # Configurações da janela
-        self.LARGURA = 1280
+        self.LARGURA = 1260
         self.ALTURA = 720
         self.JANELA = pygame.display.set_mode((self.LARGURA, self.ALTURA))
         pygame.display.set_caption("Protótipo Bomber")
@@ -34,8 +34,8 @@ class Game:
         self.jugador.life = 3
         self.bombas = []
         
-        # Crear obstáculos
-        self.crear_obstaculos()
+        # Crear obstáculos através do mapa
+        self.mapa.crear_obstaculos()
         
         # Controladores de tempo
         self.move_delay = 100
@@ -45,23 +45,6 @@ class Game:
         
         # Control de teclas
         self.bomba_presionada = False
-
-    def crear_obstaculos(self):
-        """Crea los obstáculos del juego"""
-        # Limpar objetos anteriores (se houver)
-        Object.objects.clear()
-        
-        # Obstáculos indestrutíveis (bordas)
-        Object(0, 0, 1280, 60, "Object&Bomb_Sprites/OBJ_ND.png", destrutivel=False)
-        Object(0, 660, 1280, 60, "Object&Bomb_Sprites/OBJ_ND.png", destrutivel=False)
-        Object(0, 0, 60, 720, "Object&Bomb_Sprites/OBJ_ND.png", destrutivel=False)
-        Object(1200, 0, 80, 720, "Object&Bomb_Sprites/OBJ_ND.png", destrutivel=False)
-        
-        # Obstáculos indestrutíveis internos
-        Object(120, 120, 60, 60, "Object&Bomb_Sprites/OBJ_ND.png", destrutivel=False)
-        
-        # Obstáculos destrutíveis
-        Object(480, 180, 60, 60, "Object&Bomb_Sprites/OBJ_D.png", destrutivel=True)
 
     def ajustar_a_grid(self, x, y):
         """Ajusta las coordenadas a la cuadrícula de 3x3"""
