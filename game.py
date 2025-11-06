@@ -52,17 +52,16 @@ class Game:
         Object.objects.clear()
         
         # Obstáculos indestrutíveis (bordas)
-        Object(0, 0, 1280, 60, cor=self.border_cor, destrutivel=False)
-        Object(0, 660, 1280, 60, cor=self.border_cor, destrutivel=False)
-        Object(0, 0, 60, 720, cor=self.border_cor, destrutivel=False)
-        Object(1220, 0, 60, 720, cor=self.border_cor, destrutivel=False)
+        Object(0, 0, 1280, 60, "Object&Bomb_Sprites/OBJ_ND.png", destrutivel=False)
+        Object(0, 660, 1280, 60, "Object&Bomb_Sprites/OBJ_ND.png", destrutivel=False)
+        Object(0, 0, 60, 720, "Object&Bomb_Sprites/OBJ_ND.png", destrutivel=False)
+        Object(1200, 0, 80, 720, "Object&Bomb_Sprites/OBJ_ND.png", destrutivel=False)
         
         # Obstáculos indestrutíveis internos
-        Object(120, 120, self.player_size, cor=self.object_cor, destrutivel=False)
-        Object(480, 120, self.player_size, cor=self.object_cor, destrutivel=False)
+        Object(120, 120, 60, 60, "Object&Bomb_Sprites/OBJ_ND.png", destrutivel=False)
         
         # Obstáculos destrutíveis
-        Object(480, 180, self.player_size, cor=self.destructible_cor, destrutivel=True)
+        Object(480, 180, 60, 60, "Object&Bomb_Sprites/OBJ_D.png", destrutivel=True)
 
     def ajustar_a_grid(self, x, y):
         """Ajusta las coordenadas a la cuadrícula de 3x3"""

@@ -4,7 +4,7 @@ class Map:
     def __init__(self, ancho, alto, tile_size, cor_clara, cor_escura):
         self.ancho = ancho
         self.alto = alto
-        self.tile_size = tile_size
+        self.tile_size = 60
         self.cor_clara = cor_clara
         self.cor_escura = cor_escura
     
