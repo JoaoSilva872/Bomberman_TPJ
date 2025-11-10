@@ -30,7 +30,7 @@ class Game:
         self.bombas = []
         
         # Crear obstáculos através do mapa (maze_21x11)
-        self.mapa.crear_obstaculos("maze_21x11")
+        self.mapa.crear_obstaculos("level2")
         
         # Controladores de tempo
         self.move_delay = 100

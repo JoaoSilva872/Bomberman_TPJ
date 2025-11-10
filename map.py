@@ -1,4 +1,5 @@
 import pygame
+import os
 from object import Object
 
 class Map:
@@ -9,22 +10,14 @@ class Map:
         self.cor_clara = cor_clara
         self.cor_escura = cor_escura
         
-        # Sistema de níveis - apenas maze_21x12
+        # Pasta onde as imagens dos mapas estão guardadas
+        self.maps_folder = "Maps"
+        
+        # Sistema de níveis - agora usando imagens
         self.levels = {
-            "maze_21x12": [
-                "XXXXXXXXXXXXXXXXXXXXX",  # 21 colunas - linha 0
-                "X  DDDDDX    DDXDD  X",  # linha 1
-                "X XDXDXDXDX XDXXDXX X",  # linha 2
-                "XDXDDDXDXDXDXDDDDDDDX",   # linha 3
-                "XDXXDXXD     DXXXXXDX",   # linha 4
-                "XDDD   DXDXDXDDDDDDDX",   # linha 5
-                "XDXXXXXDXDXDXDDXDXXXX",    # linha 6
-                "XDDDDDDDDDXDXXDXD   X",   # linha 7
-                "XDXXXDXX DDDDDDXXXDXX",    # linha 8
-                "X    DDD DXDDD   DDDX",   # linha 9
-                "X XXDDXX DXDDXXDDXXDX",   # linha 10
-                "XXXXXXXXXXXXXXXXXXXXX"   # linha 11 - 12 linhas
-            ]
+            "level1": "Map_2.png",
+            "level2": "Map_3.png"
+            # "level3": "Map_4.png",
         }
     
     def dibujar(self, superficie):
@@ -38,36 +31,86 @@ class Map:
                 pygame.draw.rect(superficie, cor, (coluna, linha, self.tile_size, self.tile_size))
     
     def crear_obstaculos(self, level_name="maze_21x12"):
-        """Crea obstáculos a partir do mapa definido - canto superior esquerdo"""
+        """Crea obstáculos a partir da imagem do mapa"""
         Object.objects.clear()
         
         if level_name not in self.levels:
             print(f"❌ Nível {level_name} não encontrado! Usando 'maze_21x12'.")
             level_name = "maze_21x12"
         
-        level_map = self.levels[level_name]
+        image_filename = self.levels[level_name]
+        image_path = os.path.join(self.maps_folder, image_filename)
         
-        # Criar objetos a partir da matriz
-        for row, line in enumerate(level_map):
-            for col, char in enumerate(line):
-                x = col * self.tile_size*3
-                y = row * self.tile_size*3
-                
-                # Verificar se está dentro da tela
-                if 0 <= x < self.ancho and 0 <= y < self.alto:
-                    if char == 'X':  # Parede indestrutível
-                        Object(x, y, self.tile_size*3, self.tile_size*3, 
-                              "Object&Bomb_Sprites/OBJ_ND.png", destrutivel=False)
-                    elif char == 'D':  # Obstáculo destrutível
-                        Object(x, y, self.tile_size*3, self.tile_size*3, 
-                              "Object&Bomb_Sprites/OBJ_D.png", destrutivel=True)
-                    # Espaço vazio (' ') - não cria objeto
-                
-        print(f"✅ Nível '{level_name}' carregado:")
-        print(f"   - {len([obj for obj in Object.objects if not obj.destrutivel])} objetos indestrutíveis")
-        print(f"   - {len([obj for obj in Object.objects if obj.destrutivel])} objetos destrutíveis")
-        print(f"   - 4 áreas de spawn livres (2x2 tiles cada)")
+        try:
+            # Carrega a imagem do mapa
+            map_image = pygame.image.load(image_path)
+            map_image = pygame.transform.scale(map_image, (self.ancho, self.alto))
+            
+            # Converte para uma superfície que podemos ler os pixels
+            map_surface = pygame.Surface((self.ancho, self.alto))
+            map_surface.blit(map_image, (0, 0))
+            
+            # Processa a imagem pixel a pixel (agrupado por tiles)
+            for y in range(0, self.alto, self.tile_size * 3):  # Multiplicador de 3
+                for x in range(0, self.ancho, self.tile_size * 3):  # Multiplicador de 3
+                    # Pega a cor do pixel no centro do tile
+                    pixel_x = x + (self.tile_size * 3) // 2
+                    pixel_y = y + (self.tile_size * 3) // 2
+                    
+                    if 0 <= pixel_x < self.ancho and 0 <= pixel_y < self.alto:
+                        color = map_surface.get_at((pixel_x, pixel_y))
+                        
+                        # Converte a cor para formato hexadecimal para comparação
+                        color_hex = "{:02x}{:02x}{:02x}".format(color.r, color.g, color.b)
+                        
+                        # Cria objetos baseado na cor
+                        if color_hex == "000000":  # Preto - indestrutível
+                            Object(x, y, self.tile_size * 3, self.tile_size * 3, 
+                                  "Object&Bomb_Sprites/OBJ_ND.png", destrutivel=False)
+                        elif color_hex == "68ff00":  # Verde - destrutível
+                            Object(x, y, self.tile_size * 3, self.tile_size * 3, 
+                                  "Object&Bomb_Sprites/OBJ_D.png", destrutivel=True)
+                        # Branco ("ffffff") - espaço vazio, não cria objeto
+            
+            print(f"✅ Nível '{level_name}' carregado a partir de {image_filename}:")
+            print(f"   - {len([obj for obj in Object.objects if not obj.destrutivel])} objetos indestrutíveis")
+            print(f"   - {len([obj for obj in Object.objects if obj.destrutivel])} objetos destrutíveis")
+            
+        except pygame.error as e:
+            print(f"❌ Erro ao carregar imagem do mapa: {e}")
+            print(f"📁 Procurando em: {os.path.abspath(image_path)}")
+            print("📋 Tentando criar mapa padrão como fallback...")
+            self._create_fallback_map()
+    
+    def _create_fallback_map(self):
+        """Cria um mapa simples como fallback se a imagem não for encontrada"""
+        # Cria bordas indestrutíveis
+        for x in range(0, self.ancho, self.tile_size * 3):  # Multiplicador de 3
+            for y in range(0, self.alto, self.tile_size * 3):  # Multiplicador de 3
+                # Bordas
+                if x == 0 or y == 0 or x >= self.ancho - (self.tile_size * 3) or y >= self.alto - (self.tile_size * 3):
+                    Object(x, y, self.tile_size * 3, self.tile_size * 3, 
+                          "Object&Bomb_Sprites/OBJ_ND.png", destrutivel=False)
+                # Alguns obstáculos destrutíveis no interior
+                elif x % (self.tile_size * 6) == 0 and y % (self.tile_size * 6) == 0:
+                    Object(x, y, self.tile_size * 3, self.tile_size * 3, 
+                          "Object&Bomb_Sprites/OBJ_D.png", destrutivel=True)
     
     def get_available_levels(self):
         """Retorna lista de níveis disponíveis"""
         return list(self.levels.keys())
+    
+    def scan_maps_folder(self):
+        """Escaneia a pasta de mapas e adiciona automaticamente os arquivos PNG encontrados"""
+        if not os.path.exists(self.maps_folder):
+            print(f"📁 Pasta '{self.maps_folder}' não encontrada. Criando...")
+            os.makedirs(self.maps_folder)
+            return
+        
+        png_files = [f for f in os.listdir(self.maps_folder) if f.lower().endswith('.png')]
+        
+        for png_file in png_files:
+            level_name = os.path.splitext(png_file)[0]  # Remove a extensão .png
+            if level_name not in self.levels:
+                self.levels[level_name] = png_file
+                print(f"📋 Mapa descoberto: {level_name} -> {png_file}")
