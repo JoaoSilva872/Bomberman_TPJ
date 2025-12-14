@@ -186,9 +186,14 @@ class MultiplayerGame:
             print("⚠️ No conectado - no se puede colocar bomba")
             return
         
+        # Verificar si el jugador ya tiene una bomba activa
+        if not self.local_player.puede_colocar_bomba():
+            print("⚠️ Ya tienes una bomba activa - espera a que explote")
+            return
+        
         grid_x, grid_y = self.ajustar_a_grid(self.local_player.x, self.local_player.y)
         
-        # Verificar si ya hay bomba en esa posición
+        # Verificar si ya hay bomba en esa posición (de cualquier jugador)
         bomba_existente = False
         for bomba in self.local_bombs + self.remote_bombs:
             if bomba.x == grid_x and bomba.y == grid_y and not bomba.explotada:
@@ -197,8 +202,12 @@ class MultiplayerGame:
         
         if not bomba_existente:
             # Crear la bomba localmente
-            nueva_bomba = Bomba(grid_x, grid_y, self.player_size)
+            nueva_bomba = Bomba(grid_x, grid_y, self.player_size, jugador_id=self.player_id)
+            nueva_bomba.es_remota = False  # Es bomba local
             self.local_bombs.append(nueva_bomba)
+            
+            # Marcar que el jugador colocó una bomba con referencia
+            self.local_player.colocar_bomba(nueva_bomba)
             
             # Enviar a red
             bomb_data = {
@@ -227,29 +236,36 @@ class MultiplayerGame:
         # 1. Procesar mensajes de red
         self.process_network_messages()
         
-        # 2. Actualizar movimiento local
+        # 2. Actualizar movimiento local CON COLISIÓN DE BOMBAS
         self.last_move_time += self.clock.get_time()
         if self.last_move_time >= self.move_delay:
-            self.local_player.actualizar_movimiento(self.LARGURA, self.ALTURA)
+            # Pasar todas las bombas para colisión (locales y remotas)
+            todas_bombas = self.local_bombs + self.remote_bombs
+            self.local_player.actualizar_movimiento(self.LARGURA, self.ALTURA, todas_bombas)
             self.last_move_time = 0
         
-        # 3. Actualizar animación local
+        # 3. ACTUALIZAR COLISIÓN DE BOMBAS LOCALES
+        for bomba in self.local_bombs:
+            if not bomba.explotada:
+                bomba.actualizar_colision(self.local_player.x, self.local_player.y, 
+                                         self.player_id, self.player_size)
+        
+        # 4. Actualizar animación local
         self.local_player.actualizar_animacion(tiempo_actual, pygame.key.get_pressed())
         
-        # 4. Actualizar bombas (LOCALES Y REMOTAS)
+        # 5. Actualizar bombas
         self.update_bombs()
         
-        # 5. Enviar estado del jugador
+        # 6. Enviar estado del jugador
         current_time = time.time()
         if current_time - self.last_network_update >= self.network_update_interval:
             self.send_player_state()
             self.last_network_update = current_time
         
-        # 6. Verificar fin del juego
+        # 7. Verificar fin del juego
         if not self.local_player.is_alive():
             self.game_running = False
             print("💀 ¡Has perdido!")
-            # Enviar mensaje de game over
             if self.network.is_connected():
                 game_over_msg = {
                     'type': MessageType.GAME_OVER.value,
@@ -268,16 +284,17 @@ class MultiplayerGame:
             
             if bomba.recien_explotada:
                 bomba.recien_explotada = False
-                # Procesar destrucción de objetos por bomba local
                 self.process_explosion_destruction(bomba, is_local=True)
             
-            # Verificar daño al jugador local
+            # Verificar daño al jugador local (la bomba propia no daña inmediatamente)
             if bomba.explotada and bomba.explosion_activa() and not bomba.causou_dano:
                 self.check_player_damage(bomba, self.local_player)
             
             # Limpiar bombas ya terminadas
             if bomba.explotada and not bomba.explosion_activa():
                 bombas_a_remover_local.append(bomba)
+                # Liberar al jugador para colocar otra bomba
+                self.local_player.bomba_destruida()
         
         for bomba in bombas_a_remover_local:
             self.local_bombs.remove(bomba)
@@ -290,7 +307,6 @@ class MultiplayerGame:
             
             if bomba.recien_explotada:
                 bomba.recien_explotada = False
-                # Procesar destrucción de objetos por bomba remota
                 self.process_explosion_destruction(bomba, is_local=False)
             
             # Verificar daño al jugador local (por bombas remotas)
@@ -377,10 +393,13 @@ class MultiplayerGame:
                             break
                     
                     if not bomba_existente:
-                        bomba = Bomba(data['x'], data['y'], self.player_size)
+                        bomba = Bomba(data['x'], data['y'], self.player_size, jugador_id=data['player_id'])
                         bomba.tiempo_creacion = data.get('time', time.time())
+                        bomba.es_remota = True  # Marcar como bomba remota
+                        # Para bombas remotas, son sólidas desde el principio para el jugador local
+                        bomba.es_solida_para_otros = True
                         self.remote_bombs.append(bomba)
-                        print(f"💣 Bomba remota recibida en ({data['x']}, {data['y']})")
+                        print(f"💣 Bomba remota recibida en ({data['x']}, {data['y']}) - ID: {data['player_id']}")
             
             elif msg_type == MessageType.OBJECT_DESTROYED.value:
                 # Sincronizar objeto destruido
@@ -500,6 +519,11 @@ class MultiplayerGame:
         # Indicador de jugador
         player_text = font.render(f"Jugador {'1 (Host)' if self.is_host else '2 (Cliente)'}", True, (255, 255, 0))
         self.JANELA.blit(player_text, (20, 20))
+        
+        # Indicador de bomba activa
+        if self.local_player.bomba_colocada:
+            bomba_text = font.render("¡Bomba activa!", True, (255, 255, 0))
+            self.JANELA.blit(bomba_text, (20, 60))
     
     def draw_connection_status(self):
         """Dibuja el estado de la conexión"""

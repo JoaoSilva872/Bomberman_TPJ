@@ -1,11 +1,13 @@
 import pygame
 import os
+import time
 from object import Object
 
 class Player:
-    def __init__(self, ancho_ventana, alto_ventana, tamaño, velocidad):
+    def __init__(self, ancho_ventana, alto_ventana, tamaño, velocidad, id=0):
         self.tamaño = tamaño
         self.velocidad = velocidad
+        self.id = id  # ID único del jugador (0 para un jugador, 1/2 para multijugador)
         
         # Posición inicial
         self.x = 60
@@ -14,6 +16,11 @@ class Player:
         # Vida
         self.life_max = 3
         self.life = 3
+        
+        # Control de bombas
+        self.bomba_colocada = False
+        self.ultima_bomba_tiempo = 0
+        self.bomba_actual = None
         
         # Animación
         self.direccion_actual = 'down'
@@ -25,7 +32,7 @@ class Player:
         # Cargar sprites
         self.sprites = self.cargar_sprites()
         
-# Health System functions ================================================================
+    # Health System functions ================================================================
 
     def take_damage(self, number):
         """Reduce Life."""
@@ -43,24 +50,39 @@ class Player:
         """Returns true if the player is alive."""
         return self.life > 0
     
-# ==========================================================================================
+    # Métodos para control de bombas ========================================================
+    
+    def puede_colocar_bomba(self):
+        """Verifica si el jugador puede colocar una bomba"""
+        return not self.bomba_colocada
+    
+    def colocar_bomba(self, bomba=None):
+        """Marca que el jugador ha colocado una bomba"""
+        self.bomba_colocada = True
+        self.ultima_bomba_tiempo = time.time()
+        self.bomba_actual = bomba
+    
+    def bomba_destruida(self):
+        """Marca que la bomba del jugador ha sido destruida"""
+        self.bomba_colocada = False
+        self.bomba_actual = None
+    
+    # =========================================================================================
 
     def cargar_sprites(self):
         """Carga los sprites del jugador usando tus rutas originales"""
         
         def cargar_sprite(ruta, tamaño):
             try:
-                # Intenta cargar la imagen
                 if not os.path.exists(ruta):
                     raise FileNotFoundError(f"No existe: {ruta}")
                     
                 sprite = pygame.image.load(ruta).convert_alpha()
                 return pygame.transform.scale(sprite, tamaño)
             except Exception as e:
-                # Si falla, crea un cuadrado de color como 'fallback' para que no crashee
                 print(f"⚠️ Aviso: No se encontró la imagen en '{ruta}'. Usando cuadro rojo.")
                 surf = pygame.Surface(tamaño)
-                surf.fill((255, 50, 50)) # Rojo para indicar error visualmente
+                surf.fill((255, 50, 50))
                 return surf
 
         sprites = {
@@ -70,17 +92,13 @@ class Player:
             'right': []
         }
 
-        # Nombres de archivos basados en TU estructura original
-        # Espera archivos tipo: playerSprites/bomberman_down_1.png
         carpeta = 'playerSprites' 
         
-        # Verificamos si la carpeta existe para avisarte
         if not os.path.exists(carpeta):
             print(f"❌ ERROR CRÍTICO: La carpeta '{carpeta}' no existe en el directorio del juego.")
 
         for direccion in sprites.keys():
-            for i in range(1, 4): # 1, 2, 3
-                # Construye la ruta: playerSprites/bomberman_down_1.png
+            for i in range(1, 4):
                 nombre_archivo = f'bomberman_{direccion}_{i}.png'
                 ruta_imagen = os.path.join(carpeta, nombre_archivo)
                 
@@ -89,8 +107,11 @@ class Player:
         
         return sprites
 
-    def actualizar_movimiento(self, ancho_ventana, alto_ventana):
-        """Actualiza la posición del jugador"""
+    def actualizar_movimiento(self, ancho_ventana, alto_ventana, bombas=None):
+        """Actualiza la posición del jugador con colisión de bombas"""
+        if bombas is None:
+            bombas = []
+            
         keys = pygame.key.get_pressed()
         futuro_x = self.x
         futuro_y = self.y
@@ -112,16 +133,27 @@ class Player:
         # Actualizar dirección si cambió
         if nueva_direccion != self.direccion_actual:
             self.direccion_actual = nueva_direccion
-            # Solo reinicia el frame si cambiamos de dirección drásticamente
-            # para evitar parpadeos, o reinicialo si prefieres
-            # self.frame_actual = 0 
 
-        # Verificar colisión
+        # Verificar colisión con objetos
         futuro_rect = pygame.Rect(futuro_x, futuro_y, self.tamaño, self.tamaño)
-        colision = Object.verificar_colisao_com_player(futuro_rect)
+        colision_objeto = Object.verificar_colisao_com_player(futuro_rect)
+        
+        # Verificar colisión con bombas no explotadas (usando el nuevo sistema)
+        colision_bomba = False
+        for bomba in bombas:
+            if not bomba.explotada:
+                # Usar el nuevo sistema de colisiones dinámicas
+                if bomba.es_colision_solida(self.id):
+                    if futuro_rect.colliderect(bomba.rect):
+                        colision_bomba = True
+                        break
+            # ¡CORRECCIÓN IMPORTANTE! Permitir movimiento si la bomba está explotando
+            elif bomba.explotada:
+                # Durante la explosión, NO hay colisión (el jugador puede pasar)
+                continue
 
         # Mover si no hay colisión
-        if not colision:
+        if not colision_objeto and not colision_bomba:
             self.x = futuro_x
             self.y = futuro_y
 
@@ -143,18 +175,15 @@ class Player:
                 self.frame_actual = (self.frame_actual + 1) % len(self.sprites[self.direccion_actual])
                 self.ultimo_cambio_animacion = tiempo_actual
         else:
-            # Si se detiene, volver al frame 0 (parado)
             self.frame_actual = 0
 
     def dibujar(self, superficie, tiempo_actual):
         """Dibuja al jugador en la superficie"""
-        # Pasamos las teclas presionadas para actualizar el estado de animación
         self.actualizar_animacion(tiempo_actual, pygame.key.get_pressed())
         
         try:
             sprite_actual = self.sprites[self.direccion_actual][self.frame_actual]
             superficie.blit(sprite_actual, (self.x, self.y))
         except IndexError:
-            # Por seguridad, si el frame falla, dibuja el primero
             sprite_actual = self.sprites[self.direccion_actual][0]
             superficie.blit(sprite_actual, (self.x, self.y))
