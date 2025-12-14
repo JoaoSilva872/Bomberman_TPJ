@@ -14,14 +14,17 @@ class Menu:
         self.COR_TEXTO = (255, 255, 255)
         self.COR_BOTAO = (0, 120, 0)
         self.COR_BOTAO_HOVER = (0, 180, 0)
+        self.COR_BOTAO_MULTI = (0, 100, 200)
+        self.COR_BOTAO_MULTI_HOVER = (0, 150, 255)
         
         # Fontes
         self.fonte_titulo = pygame.font.Font(None, 100)
         self.fonte_texto = pygame.font.Font(None, 36)
         
-        # Botão
-        self.botao_iniciar = pygame.Rect(self.LARGURA // 2 - 100, self.ALTURA // 2 + 50, 200, 50)
-        self.botao_sair = pygame.Rect(self.LARGURA // 2 - 100, self.ALTURA // 2 + 120, 200, 50)
+        # Botões
+        self.botao_single = pygame.Rect(self.LARGURA // 2 - 100, self.ALTURA // 2, 200, 50)
+        self.botao_multi = pygame.Rect(self.LARGURA // 2 - 100, self.ALTURA // 2 + 70, 200, 50)
+        self.botao_sair = pygame.Rect(self.LARGURA // 2 - 100, self.ALTURA // 2 + 140, 200, 50)
         
     def desenhar(self):
         """Desenha o menu na tela"""
@@ -33,20 +36,41 @@ class Menu:
         titulo_rect = titulo.get_rect(center=(self.LARGURA // 2, self.ALTURA // 3))
         self.JANELA.blit(titulo, titulo_rect)
         
-        # Botão Iniciar
         mouse_pos = pygame.mouse.get_pos()
-        cor_botao_iniciar = self.COR_BOTAO_HOVER if self.botao_iniciar.collidepoint(mouse_pos) else self.COR_BOTAO
-        pygame.draw.rect(self.JANELA, cor_botao_iniciar, self.botao_iniciar, border_radius=10)
-        texto_iniciar = self.fonte_texto.render("INICIAR JOGO", True, self.COR_TEXTO)
-        texto_iniciar_rect = texto_iniciar.get_rect(center=self.botao_iniciar.center)
-        self.JANELA.blit(texto_iniciar, texto_iniciar_rect)
+        
+        # Botão Singleplayer
+        cor_botao_single = self.COR_BOTAO_HOVER if self.botao_single.collidepoint(mouse_pos) else self.COR_BOTAO
+        pygame.draw.rect(self.JANELA, cor_botao_single, self.botao_single, border_radius=10)
+        texto_single = self.fonte_texto.render("UN JUGADOR", True, self.COR_TEXTO)
+        texto_single_rect = texto_single.get_rect(center=self.botao_single.center)
+        self.JANELA.blit(texto_single, texto_single_rect)
+        
+        # Botão Multijugador
+        cor_botao_multi = self.COR_BOTAO_MULTI_HOVER if self.botao_multi.collidepoint(mouse_pos) else self.COR_BOTAO_MULTI
+        pygame.draw.rect(self.JANELA, cor_botao_multi, self.botao_multi, border_radius=10)
+        texto_multi = self.fonte_texto.render("MULTIJUGADOR", True, self.COR_TEXTO)
+        texto_multi_rect = texto_multi.get_rect(center=self.botao_multi.center)
+        self.JANELA.blit(texto_multi, texto_multi_rect)
         
         # Botão Sair
         cor_botao_sair = self.COR_BOTAO_HOVER if self.botao_sair.collidepoint(mouse_pos) else self.COR_BOTAO
         pygame.draw.rect(self.JANELA, cor_botao_sair, self.botao_sair, border_radius=10)
-        texto_sair = self.fonte_texto.render("SAIR", True, self.COR_TEXTO)
+        texto_sair = self.fonte_texto.render("SALIR", True, self.COR_TEXTO)
         texto_sair_rect = texto_sair.get_rect(center=self.botao_sair.center)
         self.JANELA.blit(texto_sair, texto_sair_rect)
+        
+        # Instrucciones
+        instrucciones = [
+            "ENTER: Un jugador",
+            "M: Multijugador",
+            "ESC: Salir"
+        ]
+        
+        fonte_pequena = pygame.font.Font(None, 24)
+        for i, instruccion in enumerate(instrucciones):
+            texto = fonte_pequena.render(instruccion, True, (200, 200, 200))
+            texto_rect = texto.get_rect(center=(self.LARGURA // 2, self.ALTURA - 50 + i * 25))
+            self.JANELA.blit(texto, texto_rect)
         
         pygame.display.update()
     
@@ -62,19 +86,25 @@ class Menu:
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     mouse_pos = pygame.mouse.get_pos()
                     
-                    # Verifica clique no botão Iniciar
-                    if self.botao_iniciar.collidepoint(mouse_pos):
-                        return True  # Inicia o jogo
+                    # Verifica clique no botão Singleplayer
+                    if self.botao_single.collidepoint(mouse_pos):
+                        return "single"  # Retorna tipo de juego
+                    
+                    # Verifica clique no botão Multijugador
+                    if self.botao_multi.collidepoint(mouse_pos):
+                        return "multi"  # Retorna tipo de juego
                     
                     # Verifica clique no botão Sair
                     if self.botao_sair.collidepoint(mouse_pos):
                         pygame.quit()
                         sys.exit()
                 
-                # Também permite iniciar com Enter
+                # También permite iniciar con teclas
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_RETURN:
-                        return True
+                        return "single"
+                    if event.key == pygame.K_m:
+                        return "multi"
                     if event.key == pygame.K_ESCAPE:
                         pygame.quit()
                         sys.exit()
@@ -82,4 +112,4 @@ class Menu:
             self.desenhar()
             pygame.time.Clock().tick(60)
         
-        return False
+        return None

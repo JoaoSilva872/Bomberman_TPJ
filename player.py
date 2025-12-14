@@ -25,7 +25,7 @@ class Player:
         # Cargar sprites
         self.sprites = self.cargar_sprites()
         
-# Health Sistem functions ================================================================
+# Health System functions ================================================================
 
     def take_damage(self, number):
         """Reduce Life."""
@@ -46,15 +46,21 @@ class Player:
 # ==========================================================================================
 
     def cargar_sprites(self):
-        """Carga los sprites del jugador"""
+        """Carga los sprites del jugador usando tus rutas originales"""
+        
         def cargar_sprite(ruta, tamaño):
             try:
+                # Intenta cargar la imagen
+                if not os.path.exists(ruta):
+                    raise FileNotFoundError(f"No existe: {ruta}")
+                    
                 sprite = pygame.image.load(ruta).convert_alpha()
                 return pygame.transform.scale(sprite, tamaño)
-            except:
-                print(f"Error cargando: {ruta}")
-                surf = pygame.Surface(tamaño, pygame.SRCALPHA)
-                pygame.draw.rect(surf, (255, 0, 0), (0, 0, tamaño[0], tamaño[1]))
+            except Exception as e:
+                # Si falla, crea un cuadrado de color como 'fallback' para que no crashee
+                print(f"⚠️ Aviso: No se encontró la imagen en '{ruta}'. Usando cuadro rojo.")
+                surf = pygame.Surface(tamaño)
+                surf.fill((255, 50, 50)) # Rojo para indicar error visualmente
                 return surf
 
         sprites = {
@@ -64,9 +70,20 @@ class Player:
             'right': []
         }
 
+        # Nombres de archivos basados en TU estructura original
+        # Espera archivos tipo: playerSprites/bomberman_down_1.png
+        carpeta = 'playerSprites' 
+        
+        # Verificamos si la carpeta existe para avisarte
+        if not os.path.exists(carpeta):
+            print(f"❌ ERROR CRÍTICO: La carpeta '{carpeta}' no existe en el directorio del juego.")
+
         for direccion in sprites.keys():
-            for i in range(1,4):
-                ruta_imagen = os.path.join('playerSprites', f'bomberman_{direccion}_{i}.png')
+            for i in range(1, 4): # 1, 2, 3
+                # Construye la ruta: playerSprites/bomberman_down_1.png
+                nombre_archivo = f'bomberman_{direccion}_{i}.png'
+                ruta_imagen = os.path.join(carpeta, nombre_archivo)
+                
                 sprite = cargar_sprite(ruta_imagen, (self.tamaño, self.tamaño))
                 sprites[direccion].append(sprite)
         
@@ -95,7 +112,9 @@ class Player:
         # Actualizar dirección si cambió
         if nueva_direccion != self.direccion_actual:
             self.direccion_actual = nueva_direccion
-            self.frame_actual = 0
+            # Solo reinicia el frame si cambiamos de dirección drásticamente
+            # para evitar parpadeos, o reinicialo si prefieres
+            # self.frame_actual = 0 
 
         # Verificar colisión
         futuro_rect = pygame.Rect(futuro_x, futuro_y, self.tamaño, self.tamaño)
@@ -119,14 +138,23 @@ class Player:
             keys[pygame.K_d], keys[pygame.K_RIGHT]
         ])
 
-        if self.esta_moviendose and tiempo_actual - self.ultimo_cambio_animacion > self.velocidad_animacion:
-            self.frame_actual = (self.frame_actual + 1) % len(self.sprites[self.direccion_actual])
-            self.ultimo_cambio_animacion = tiempo_actual
-        elif not self.esta_moviendose:
+        if self.esta_moviendose:
+            if tiempo_actual - self.ultimo_cambio_animacion > self.velocidad_animacion:
+                self.frame_actual = (self.frame_actual + 1) % len(self.sprites[self.direccion_actual])
+                self.ultimo_cambio_animacion = tiempo_actual
+        else:
+            # Si se detiene, volver al frame 0 (parado)
             self.frame_actual = 0
 
     def dibujar(self, superficie, tiempo_actual):
         """Dibuja al jugador en la superficie"""
+        # Pasamos las teclas presionadas para actualizar el estado de animación
         self.actualizar_animacion(tiempo_actual, pygame.key.get_pressed())
-        sprite_actual = self.sprites[self.direccion_actual][self.frame_actual]
-        superficie.blit(sprite_actual, (self.x, self.y))
+        
+        try:
+            sprite_actual = self.sprites[self.direccion_actual][self.frame_actual]
+            superficie.blit(sprite_actual, (self.x, self.y))
+        except IndexError:
+            # Por seguridad, si el frame falla, dibuja el primero
+            sprite_actual = self.sprites[self.direccion_actual][0]
+            superficie.blit(sprite_actual, (self.x, self.y))
