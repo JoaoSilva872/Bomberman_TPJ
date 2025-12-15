@@ -1,5 +1,6 @@
 import pygame
 import sys
+import time
 from map import Map
 from player import Player
 from object import Object
@@ -24,7 +25,7 @@ class Game:
         
         # Inicializar componentes
         self.mapa = Map(self.LARGURA, self.ALTURA, self.TILE_SIZE, self.COR_CLARA, self.COR_ESCURA)
-        self.jugador = Player(self.LARGURA, self.ALTURA, self.player_size, self.player_vel)
+        self.jugador = Player(self.LARGURA, self.ALTURA, self.player_size, self.player_vel, id=0)
         self.jugador.life_max = 3
         self.jugador.life = 3
         self.bombas = []
@@ -43,7 +44,7 @@ class Game:
 
     def ajustar_a_grid(self, x, y):
         """Ajusta las coordenadas a la cuadrícula de 3x3"""
-        grid_size = self.player_size  # 60 píxeles (3 tiles × 20 píxeles)
+        grid_size = self.player_size
         grid_x = (x // grid_size) * grid_size
         grid_y = (y // grid_size) * grid_size
         return grid_x, grid_y
@@ -56,27 +57,35 @@ class Game:
             
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE and not self.bomba_presionada:
-                    # Verifica se já existe uma bomba ativa (não explodida)
-                    bomba_activa = any(not b.explotada for b in self.bombas)
+                    # Verificar si el jugador puede colocar bomba (solo una)
+                    if not self.jugador.puede_colocar_bomba():
+                        print("⚠️ Ya tienes una bomba activa - espera a que explote")
+                        return True
                     
-                    if not bomba_activa:
+                    # Verificar si ya existe una bomba activa en esa posición
+                    grid_x, grid_y = self.ajustar_a_grid(self.jugador.x, self.jugador.y)
+                    bomba_en_posicion = False
+                    for b in self.bombas:
+                        if not b.explotada and b.x == grid_x and b.y == grid_y:
+                            bomba_en_posicion = True
+                            break
+                    
+                    if not bomba_en_posicion:
                         from bomba import Bomba
                         # Ajustar posición a la cuadrícula de 3x3
-                        grid_x, grid_y = self.ajustar_a_grid(self.jugador.x, self.jugador.y)
-                        nueva_bomba = Bomba(grid_x, grid_y, self.player_size)
+                        nueva_bomba = Bomba(grid_x, grid_y, self.player_size, jugador_id=self.jugador.id)
                         self.bombas.append(nueva_bomba)
+                        self.jugador.colocar_bomba(nueva_bomba)
                         self.bomba_presionada = True
-                        print(f"Bomba colocada em ({grid_x}, {grid_y})")
+                        print(f"💣 Bomba colocada en ({grid_x}, {grid_y})")
                     else:
-                        print("Já há uma bomba ativa — espere ela explodir!")
+                        print("Ya hay una bomba en esta posición")
 
                 #Testing Life system ========================================================
-                # Tecla K → jogador leva 1 de dano
                 if event.key == pygame.K_k:
                     self.jugador.take_damage(1)
                     print(f"Player take damage! Life: {self.jugador.life}/{self.jugador.life_max}")
 
-                # Tecla H → jogador recupera toda a vida
                 elif event.key == pygame.K_h:
                     self.jugador.heal(self.jugador.life_max)
                     print(f"Player heald! Life: {self.jugador.life}/{self.jugador.life_max}")
@@ -99,17 +108,22 @@ class Game:
         # Actualizar movimiento del jugador
         self.last_move_time += self.clock.get_time()
         if self.last_move_time >= self.move_delay:
-            self.jugador.actualizar_movimiento(self.LARGURA, self.ALTURA)
+            # Pasar todas las bombas para colisión
+            self.jugador.actualizar_movimiento(self.LARGURA, self.ALTURA, self.bombas)
             self.last_move_time = 0
         
         # Actualizar animación del jugador
         keys = pygame.key.get_pressed()
         self.jugador.actualizar_animacion(tiempo_actual, keys)
         
-        # Actualizar bombas
+        # ACTUALIZAR COLISIÓN DE BOMBAS - IMPORTANTE
+        for bomba in self.bombas:
+            bomba.actualizar_colision(self.jugador.x, self.jugador.y, self.jugador.id, self.player_size)
+        
+        # Actualizar bombas (explosiones, etc.)
         self.actualizar_bombas()
         
-        # Atualizar objetos destrutíveis (NOVO)
+        # Atualizar objetos destrutíveis
         Object.atualizar_objetos_destrutiveis(self.bombas)
 
     def actualizar_bombas(self):
@@ -135,6 +149,8 @@ class Game:
 
             if bomba.explotada and not bomba.explosion_activa():
                 bombas_a_remover.append(bomba)
+                # Notificar al jugador que su bomba fue destruida
+                self.jugador.bomba_destruida()
 
         for bomba in bombas_a_remover:
             self.bombas.remove(bomba)
@@ -146,10 +162,10 @@ class Game:
         
         # 2. Dibujar obstáculos NÃO DESTRUÍDOS
         for obj in Object.objects:
-            if not obj.destruido:  # Só desenha se não foi destruído
+            if not obj.destruido:
                 obj.draw(self.JANELA)
         
-        # 3. Dibujar bombas e EXPLOSÕES (por cima dos objetos destrutíveis)
+        # 3. Dibujar bombas e EXPLOSÕES
         for bomba in self.bombas:
             bomba.dibujar(self.JANELA)
         
@@ -158,6 +174,13 @@ class Game:
         
         # 5. Desenhar vidas (UI)
         self.draw_lives()
+        
+        # 6. Dibujar indicador de bomba activa
+        if self.jugador.bomba_colocada:
+            font = pygame.font.Font(None, 24)
+            text = font.render("¡Bomba activa! (Espera a que explote)", True, (255, 255, 0))
+            text_rect = text.get_rect(center=(self.LARGURA // 2, self.ALTURA - 60))
+            self.JANELA.blit(text, text_rect)
         
         # Actualizar pantalla
         pygame.display.update()
@@ -181,7 +204,7 @@ class Game:
 
         print("💀 GAME OVER - Voltando ao menu...")
 
-        # Espera o jogador pressionar qualquer tecla
+        # Espera el jugador pressionar qualquer tecla
         esperando = True
         while esperando:
             for event in pygame.event.get():
