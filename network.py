@@ -22,7 +22,7 @@ class MessageType(Enum):
     CONNECTION_CHECK = 13
 
 class GameNetwork:
-    """Sistema de red TCP para el juego Bomberman - MANTIENE MISMO NOMBRE"""
+    """Sistema de red TCP para el juego Bomberman - VERSIÓN CORREGIDA"""
     
     def __init__(self, is_host=False, host_ip='127.0.0.1', port=4040):
         self.is_host = is_host
@@ -30,25 +30,25 @@ class GameNetwork:
         self.port = port
         
         # Sockets TCP
-        self.server_socket = None      # Solo para host (socket servidor)
-        self.client_socket = None      # Socket de conexión principal
-        self.connection_socket = None  # Socket aceptado (en host)
+        self.server_socket = None      # Solo para host
+        self.client_socket = None      # Socket principal
+        self.connection_socket = None  # Socket aceptado
         
         self.connected = False
         self.connection_established = False
-        self.peer_address = None       # Dirección del peer (para compatibilidad)
+        self.peer_address = None
         self.running = True
         
-        # Buffer para mensajes recibidos
+        # Buffer para mensajes
         self.received_messages = []
         self.message_lock = threading.Lock()
         
-        # Heartbeat - TCP es más tolerante
+        # Heartbeat
         self.last_heartbeat_received = time.time()
-        self.heartbeat_interval = 1.0    # Menos frecuente que UDP
-        self.heartbeat_timeout = 10.0    # Más tolerante en TCP
+        self.heartbeat_interval = 2.0
+        self.heartbeat_timeout = 15.0
         
-        # Estado del juego compartido (para compatibilidad)
+        # Estado del juego
         self.game_state = {
             'players': {},
             'bombs': [],
@@ -57,465 +57,438 @@ class GameNetwork:
             'time': 0
         }
         
-        # Estadísticas para debug
+        # Estadísticas
         self.stats = {
             'messages_sent': 0,
             'messages_received': 0,
             'connection_errors': 0,
-            'last_heartbeat_sent': 0
+            'last_debug_time': time.time()
         }
         
-        # Threads
-        self.receive_thread = None
-        self.heartbeat_thread = None
+        # Para debug
+        self.debug = True
         
     def initialize(self):
-        """Inicializa la conexión TCP - MANTIENE MISMA FIRMA"""
+        """Inicializa la conexión TCP"""
         try:
             if self.is_host:
-                # HOST: Crear socket servidor TCP
+                # HOST: Crear socket servidor
                 self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                self.server_socket.settimeout(0.5)  # Timeout para accept
+                self.server_socket.settimeout(0.5)
                 
-                # Bind a todas las interfaces
+                # Bind
                 self.server_socket.bind(('0.0.0.0', self.port))
-                self.server_socket.listen(1)  # Solo 1 conexión (2 jugadores)
+                self.server_socket.listen(1)
                 
                 print(f"🎮 Host TCP iniciado en puerto {self.port}")
-                print("🔄 Esperando que un jugador se conecte...")
+                print("🔄 Esperando conexión...")
                 
-                # Mostrar IPs disponibles
-                local_ip = self._get_local_ip()
-                print(f"📡 Conectarse usando: {local_ip}:{self.port}")
-                
-                # Thread para aceptar conexión
-                accept_thread = threading.Thread(target=self._accept_connection, daemon=True)
-                accept_thread.start()
+                # Thread para aceptar
+                threading.Thread(target=self._accept_connection, daemon=True).start()
                 
             else:
-                # CLIENTE: Conectar al host
+                # CLIENTE: Configurar dirección
                 self.peer_address = (self.host_ip, self.port)
-                print(f"🔗 Intentando conectar a {self.host_ip}:{self.port}...")
+                print(f"🔗 Intentando conectar a {self.host_ip}:{self.port}")
                 
-                # Thread para conectar (con reintentos)
-                connect_thread = threading.Thread(target=self._connect_to_host, daemon=True)
-                connect_thread.start()
+                # Thread para conectar
+                threading.Thread(target=self._connect_to_host, daemon=True).start()
             
             return True
             
         except Exception as e:
-            print(f"❌ Error inicializando red TCP: {e}")
-            self.game_running = False
+            print(f"❌ Error inicializando red: {e}")
             return False
     
     def _accept_connection(self):
-        """Acepta conexiones entrantes - SOLO HOST"""
+        """Acepta conexiones - HOST"""
         try:
-            print(f"👂 Host esperando conexión en puerto {self.port}...")
+            print(f"👂 Host esperando en puerto {self.port}...")
             
-            # Aceptar conexión (bloqueante con timeout)
+            # Aceptar con timeout
             self.connection_socket, client_addr = self.server_socket.accept()
-            self.connection_socket.settimeout(0.1)  # Timeout corto para recv
-            
-            print(f"✅ ¡Cliente conectado desde {client_addr}!")
+            print(f"✅ Cliente conectado desde {client_addr}")
             
             # Configurar
             self.client_socket = self.connection_socket
+            self.client_socket.settimeout(0.1)
             self.peer_address = client_addr
+            
+            # Marcar como conectado INMEDIATAMENTE
             self.connected = True
             self.connection_established = True
             
-            # Iniciar threads de recepción
+            print("✅ Conexión establecida en el host")
+            
+            # Iniciar threads
             self._start_network_threads()
             
-            # Enviar confirmación de conexión
-            response = {
-                'type': MessageType.CONNECTION_ACCEPTED.value,
-                'message': '¡Conexión TCP establecida!',
-                'timestamp': time.time(),
-                'player_id': 2  # Cliente es jugador 2
-            }
-            self._send_tcp_message(response)
-            
-            print("📤 Enviada confirmación de conexión al cliente")
+            # Enviar confirmación INMEDIATAMENTE
+            self._send_welcome_message()
             
         except socket.timeout:
             print("⏱️ Timeout esperando conexión")
         except Exception as e:
-            if self.running:
-                print(f"❌ Error aceptando conexión: {e}")
+            print(f"❌ Error aceptando: {e}")
+    
+    def _send_welcome_message(self):
+        """Envía mensaje de bienvenida"""
+        try:
+            welcome = {
+                'type': MessageType.CONNECTION_ACCEPTED.value,
+                'message': '¡Bienvenido!',
+                'timestamp': time.time(),
+                'player_id': 2,
+                'data': {'status': 'connected'}
+            }
+            
+            if self._send_tcp_message(welcome):
+                print("📤 Mensaje de bienvenida enviado")
+            else:
+                print("❌ Error enviando bienvenida")
+                
+        except Exception as e:
+            print(f"❌ Error en welcome: {e}")
     
     def _connect_to_host(self):
-        """Conecta al host - SOLO CLIENTE"""
-        max_attempts = 10
+        """Conecta al host - CLIENTE"""
+        max_attempts = 5
         attempt = 0
         
-        while self.running and not self.connection_established and attempt < max_attempts:
+        while self.running and attempt < max_attempts:
             try:
-                print(f"🔄 Intento {attempt + 1}/{max_attempts} de conexión...")
+                print(f"🔄 Intento {attempt + 1}/{max_attempts}")
                 
-                # Crear socket TCP
+                # Crear socket
                 self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self.client_socket.settimeout(5)  # Timeout de conexión
+                self.client_socket.settimeout(5)
                 
-                # Conectar al host
+                # Conectar
+                print(f"🔗 Conectando a {self.host_ip}:{self.port}...")
                 self.client_socket.connect((self.host_ip, self.port))
-                self.client_socket.settimeout(0.1)  # Timeout corto para recv
+                self.client_socket.settimeout(0.1)
                 
-                print("✅ Socket TCP conectado, esperando confirmación...")
+                print("✅ Socket conectado")
                 
-                # Iniciar threads de recepción
+                # Marcar como conectado
+                self.connected = True
+                self.connection_established = True
+                
+                print("✅ Conexión establecida en el cliente")
+                
+                # Iniciar threads
                 self._start_network_threads()
                 
-                # Enviar solicitud de conexión
+                # Enviar solicitud
                 request = {
                     'type': MessageType.CONNECTION_REQUEST.value,
                     'timestamp': time.time(),
-                    'player_id': 2  # Cliente es jugador 2
+                    'player_id': 2,
+                    'data': {'action': 'connect'}
                 }
-                self._send_tcp_message(request)
                 
-                # Esperar confirmación (con timeout)
-                start_time = time.time()
-                while time.time() - start_time < 5.0 and not self.connection_established:
-                    # Procesar mensajes recibidos
-                    messages = self.get_messages()
-                    for message, _ in messages:
-                        if message.get('type') == MessageType.CONNECTION_ACCEPTED.value:
-                            self.connected = True
-                            self.connection_established = True
-                            print("✅ ¡Conexión TCP establecida con el host!")
-                            return True
-                    
-                    time.sleep(0.1)
+                if self._send_tcp_message(request):
+                    print("📤 Solicitud enviada")
+                else:
+                    print("❌ Error enviando solicitud")
                 
-                # Si no se confirmó en 5 segundos, reintentar
-                print("⏱️ Timeout esperando confirmación del host")
-                self.client_socket.close()
-                self.client_socket = None
+                return True
                 
-            except socket.timeout:
-                print(f"⏱️ Timeout en intento {attempt + 1}")
             except ConnectionRefusedError:
-                print(f"❌ Conexión rechazada - ¿El host está ejecutándose?")
+                print("❌ Conexión rechazada")
+            except socket.timeout:
+                print("⏱️ Timeout")
             except Exception as e:
-                print(f"⚠️ Error en intento {attempt + 1}: {e}")
+                print(f"⚠️ Error: {e}")
             
             attempt += 1
             if attempt < max_attempts:
-                time.sleep(2)  # Esperar antes de reintentar
+                time.sleep(2)
         
-        print("❌ No se pudo establecer conexión TCP después de varios intentos")
+        print("❌ No se pudo conectar")
         return False
     
     def _start_network_threads(self):
-        """Inicia los threads de red"""
+        """Inicia threads de red"""
         # Thread de recepción
-        self.receive_thread = threading.Thread(target=self._receive_tcp_messages, daemon=True)
-        self.receive_thread.start()
+        threading.Thread(target=self._receive_messages_safe, daemon=True).start()
         
         # Thread de heartbeat
-        self.heartbeat_thread = threading.Thread(target=self._heartbeat_loop, daemon=True)
-        self.heartbeat_thread.start()
+        threading.Thread(target=self._heartbeat_loop, daemon=True).start()
+        
+        print("📡 Threads de red iniciados")
+    
+    def _receive_messages_safe(self):
+        """Recibe mensajes de forma segura"""
+        print("🎯 Thread de recepción INICIADO")
+        
+        try:
+            self._receive_tcp_messages()
+        except Exception as e:
+            print(f"💥 ERROR CRÍTICO en thread de recepción: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        print("🔌 Thread de recepción TERMINADO")
     
     def _receive_tcp_messages(self):
-        """Recibe mensajes TCP con formato de longitud"""
+        """Recibe mensajes TCP - VERSIÓN ROBUSTA"""
         buffer = b""
+        print(f"📡 Iniciando recepción (host={self.is_host})")
         
         while self.running and self.connected:
             try:
                 # Recibir datos
                 data = self.client_socket.recv(4096)
+                
                 if not data:
-                    print("⚠️ Conexión cerrada por el peer")
+                    print("📭 Conexión cerrada (recv=0)")
                     self.connected = False
-                    self.connection_established = False
                     break
                 
+                if self.debug:
+                    print(f"📨 Recibidos {len(data)} bytes")
+                
                 buffer += data
-                self.stats['messages_received'] += 1
                 self.last_heartbeat_received = time.time()
                 
-                # Procesar todos los mensajes completos en el buffer
-                while len(buffer) >= 4:
-                    # Los primeros 4 bytes son la longitud del mensaje
-                    msg_length = struct.unpack('!I', buffer[:4])[0]
+                # Procesar buffer
+                while True:
+                    # Necesitamos al menos 4 bytes para la longitud
+                    if len(buffer) < 4:
+                        break
                     
-                    # Verificar si tenemos el mensaje completo
-                    if len(buffer) >= 4 + msg_length:
-                        # Extraer el mensaje
-                        msg_data = buffer[4:4 + msg_length]
-                        buffer = buffer[4 + msg_length:]  # Quitar mensaje procesado
+                    try:
+                        # Obtener longitud
+                        msg_length = struct.unpack('!I', buffer[:4])[0]
                         
+                        # Verificar si tenemos el mensaje completo
+                        if len(buffer) < 4 + msg_length:
+                            break
+                        
+                        # Extraer mensaje
+                        msg_data = buffer[4:4 + msg_length]
+                        buffer = buffer[4 + msg_length:]
+                        
+                        # Deserializar
                         try:
                             message = pickle.loads(msg_data)
+                            self.stats['messages_received'] += 1
                             
-                            # Actualizar heartbeat para CUALQUIER mensaje
-                            self.last_heartbeat_received = time.time()
+                            if self.debug:
+                                print(f"📦 Mensaje recibido - Tipo: {message.get('type')}")
                             
-                            # Procesar tipos específicos
-                            msg_type = message.get('type')
+                            # Procesar
+                            self._process_received_message(message)
                             
-                            if msg_type == MessageType.CONNECTION_ACCEPTED.value:
-                                if not self.connection_established:
-                                    self.connected = True
-                                    self.connection_established = True
-                                    print("✅ Conexión aceptada por el host (TCP)")
-                            
-                            elif msg_type == MessageType.CONNECTION_CHECK.value:
-                                # Responder check
-                                if self.is_host:
-                                    check_response = {
-                                        'type': MessageType.CONNECTION_CHECK.value,
-                                        'timestamp': time.time(),
-                                        'status': 'ok'
-                                    }
-                                    self._send_tcp_message(check_response)
-                            
-                            # Agregar mensaje al buffer
-                            with self.message_lock:
-                                self.received_messages.append((message, None))
-                                
                         except Exception as e:
-                            print(f"⚠️ Error deserializando mensaje TCP: {e}")
+                            print(f"⚠️ Error deserializando: {e}")
                             continue
-                    else:
-                        # Mensaje incompleto, esperar más datos
+                            
+                    except struct.error as e:
+                        print(f"⚠️ Error en struct.unpack: {e}")
+                        buffer = b""  # Limpiar buffer corrupto
                         break
-                        
+                    except Exception as e:
+                        print(f"⚠️ Error procesando: {e}")
+                        break
+                
             except socket.timeout:
-                continue  # Timeout normal en recv
+                continue  # Timeout normal
             except ConnectionResetError:
-                print("⚠️ Conexión TCP reseteada por el peer")
+                print("⚠️ Conexión reseteada")
                 self.connected = False
-                self.connection_established = False
                 break
-            except Exception as e:
-                if self.running:
-                    print(f"⚠️ Error en receive_tcp_messages: {e}")
+            except OSError as e:
+                if e.errno == 10054:
+                    print("⚠️ Conexión cerrada por peer")
                     self.connected = False
-                    self.connection_established = False
+                    break
+                else:
+                    print(f"⚠️ OSError: {e}")
+                    self.connected = False
+                    break
+            except Exception as e:
+                print(f"⚠️ Error inesperado: {e}")
+                self.connected = False
                 break
         
-        print("🔌 Thread de recepción TCP terminado")
+        print("🔌 Terminando recepción")
+    
+    def _process_received_message(self, message):
+        """Procesa un mensaje recibido"""
+        msg_type = message.get('type')
+        
+        # Actualizar heartbeat para cualquier mensaje
+        self.last_heartbeat_received = time.time()
+        
+        # Procesar según tipo
+        if msg_type == MessageType.CONNECTION_ACCEPTED.value:
+            print("✅ Conexión aceptada por el host")
+            self.connection_established = True
+            
+        elif msg_type == MessageType.CONNECTION_REQUEST.value and self.is_host:
+            # Cliente solicitando conexión (ya estamos conectados)
+            print("📨 Solicitud de conexión recibida")
+            
+        elif msg_type == MessageType.HEARTBEAT.value:
+            pass  # Solo heartbeat
+            
+        elif msg_type == MessageType.CONNECTION_CHECK.value:
+            # Responder a check
+            if self.is_host:
+                response = {
+                    'type': MessageType.CONNECTION_CHECK.value,
+                    'timestamp': time.time(),
+                    'status': 'ok'
+                }
+                self._send_tcp_message(response)
+        
+        # Agregar a buffer
+        with self.message_lock:
+            self.received_messages.append((message, None))
     
     def _send_tcp_message(self, message):
-        """Envía un mensaje TCP con formato de longitud"""
+        """Envía mensaje TCP"""
         if not self.client_socket:
-            print("⚠️ No hay socket TCP para enviar")
+            print("⚠️ No hay socket para enviar")
             return False
         
         try:
-            # Serializar mensaje
+            # Serializar
             serialized = pickle.dumps(message)
+            length = len(serialized)
             
-            # Añadir longitud (4 bytes) al principio
-            length = struct.pack('!I', len(serialized))
-            full_message = length + serialized
+            # Enviar longitud + mensaje
+            header = struct.pack('!I', length)
+            self.client_socket.sendall(header + serialized)
             
-            # Enviar todo
-            self.client_socket.sendall(full_message)
             self.stats['messages_sent'] += 1
             return True
             
         except BrokenPipeError:
-            print("❌ Conexión TCP rota - no se pudo enviar")
+            print("🔌 Conexión rota")
             self.connected = False
             return False
         except Exception as e:
-            print(f"❌ Error enviando mensaje TCP: {e}")
+            print(f"❌ Error enviando: {e}")
             self.connected = False
             return False
     
     def send_player_state(self, player_data):
-        """Envía el estado del jugador - MANTIENE MISMA FIRMA"""
-        if self.connected and self.connection_established:
+        """Envía estado del jugador"""
+        if self.connected:
             message = {
                 'type': MessageType.PLAYER_STATE.value,
                 'player_id': 1 if self.is_host else 2,
                 'data': player_data,
-                'timestamp': time.time(),
-                'sequence': self.stats['messages_sent']
+                'timestamp': time.time()
             }
             return self._send_tcp_message(message)
         return False
     
     def send_bomb_placed(self, bomb_data):
-        """Envía información de bomba colocada - MANTIENE MISMA FIRMA"""
-        if self.connected and self.connection_established:
+        """Envía bomba colocada"""
+        if self.connected:
             message = {
                 'type': MessageType.BOMB_PLACED.value,
                 'data': bomb_data,
-                'timestamp': time.time(),
-                'sequence': self.stats['messages_sent']
+                'timestamp': time.time()
             }
             return self._send_tcp_message(message)
         return False
     
     def send_object_destroyed(self, object_data):
-        """Envía información de objeto destruido - MANTIENE MISMA FIRMA"""
-        if self.connected and self.connection_established:
+        """Envía objeto destruido"""
+        if self.connected:
             message = {
                 'type': MessageType.OBJECT_DESTROYED.value,
                 'data': object_data,
-                'timestamp': time.time(),
-                'sequence': self.stats['messages_sent']
+                'timestamp': time.time()
             }
             return self._send_tcp_message(message)
         return False
     
     def send_powerup_spawned(self, powerup_data):
-        """Envía información de power-up aparecido - MANTIENE MISMA FIRMA"""
-        if self.connected and self.connection_established:
+        """Envía power-up aparecido"""
+        if self.connected:
             message = {
                 'type': MessageType.POWERUP_SPAWNED.value,
                 'data': powerup_data,
-                'timestamp': time.time(),
-                'sequence': self.stats['messages_sent']
+                'timestamp': time.time()
             }
             return self._send_tcp_message(message)
         return False
     
     def send_powerup_collected(self, powerup_data):
-        """Envía información de power-up recogido - MANTIENE MISMA FIRMA"""
-        if self.connected and self.connection_established:
+        """Envía power-up recogido"""
+        if self.connected:
             message = {
                 'type': MessageType.POWERUP_COLLECTED.value,
                 'data': powerup_data,
-                'timestamp': time.time(),
-                'sequence': self.stats['messages_sent']
+                'timestamp': time.time()
             }
             return self._send_tcp_message(message)
         return False
     
     def _heartbeat_loop(self):
-        """Envía heartbeats periódicos - TCP"""
+        """Loop de heartbeat"""
+        print("❤️ Thread de heartbeat iniciado")
+        
         while self.running:
-            current_time = time.time()
+            if self.connected:
+                current_time = time.time()
+                
+                # Enviar heartbeat periódicamente
+                if current_time - self.stats.get('last_heartbeat_sent', 0) >= self.heartbeat_interval:
+                    heartbeat = {
+                        'type': MessageType.HEARTBEAT.value,
+                        'timestamp': current_time
+                    }
+                    
+                    if self._send_tcp_message(heartbeat):
+                        self.stats['last_heartbeat_sent'] = current_time
+                
+                # Verificar timeout
+                time_since = current_time - self.last_heartbeat_received
+                if time_since > self.heartbeat_timeout:
+                    print(f"⚠️ Sin heartbeat por {time_since:.1f}s")
+                    self.connected = False
             
-            # Mostrar estadísticas cada 10 segundos
-            if current_time - self.stats.get('last_debug_time', 0) > 10 and self.connected:
-                print(f"📊 TCP Stats: Enviados={self.stats['messages_sent']}, "
-                      f"Recibidos={self.stats['messages_received']}, "
-                      f"Errores={self.stats['connection_errors']}")
+            # Estadísticas
+            if current_time - self.stats['last_debug_time'] > 10:
+                print(f"📊 Stats: Enviados={self.stats['messages_sent']}, Recibidos={self.stats['messages_received']}")
                 self.stats['last_debug_time'] = current_time
             
-            # Enviar heartbeat si estamos conectados
-            if self.connected and self.connection_established:
-                # Enviar heartbeat cada intervalo
-                if current_time - self.stats.get('last_heartbeat_sent', 0) >= self.heartbeat_interval:
-                    heartbeat_msg = {
-                        'type': MessageType.HEARTBEAT.value,
-                        'timestamp': current_time,
-                        'stats': self.stats
-                    }
-                    if self._send_tcp_message(heartbeat_msg):
-                        self.stats['last_heartbeat_sent'] = current_time
-            
-            # Verificar conexión
-            time_since_last = current_time - self.last_heartbeat_received
-            
-            if self.connected and time_since_last > self.heartbeat_timeout:
-                print(f"⚠️ Posible pérdida de conexión TCP ({time_since_last:.1f}s sin mensajes)")
-                
-                # Intentar verificar conexión
-                check_msg = {
-                    'type': MessageType.CONNECTION_CHECK.value,
-                    'timestamp': current_time,
-                    'check': 'alive?'
-                }
-                self._send_tcp_message(check_msg)
-                
-                if time_since_last > self.heartbeat_timeout * 2:
-                    print("❌ Conexión TCP perdida definitivamente")
-                    self.connected = False
-                    self.connection_established = False
-            
-            time.sleep(0.5)  # Más lento que UDP
+            time.sleep(0.5)
     
     def get_messages(self):
-        """Obtiene todos los mensajes recibidos - MANTIENE MISMA FIRMA"""
+        """Obtiene mensajes recibidos"""
         with self.message_lock:
             messages = self.received_messages.copy()
             self.received_messages.clear()
             return messages
     
     def is_connected(self):
-        """Verifica si hay conexión activa - MANTIENE MISMA FIRMA"""
-        if not self.connected or not self.connection_established:
-            return False
-        
-        # Verificar timeout
-        time_since_last = time.time() - self.last_heartbeat_received
-        is_alive = time_since_last < self.heartbeat_timeout * 1.5
-        
-        return is_alive
+        """Verifica conexión"""
+        return self.connected and self.connection_established
     
     def disconnect(self):
-        """Cierra la conexión limpiamente - MANTIENE MISMA FIRMA"""
+        """Desconectar"""
         self.running = False
         self.connected = False
-        self.connection_established = False
         
-        # Enviar mensaje de desconexión si hay conexión
         if self.client_socket:
-            try:
-                disconnect_msg = {
-                    'type': MessageType.GAME_OVER.value,
-                    'timestamp': time.time(),
-                    'reason': 'disconnect'
-                }
-                self._send_tcp_message(disconnect_msg)
-                time.sleep(0.1)  # Dar tiempo a enviar
-            except:
-                pass
-            
-            # Cerrar socket
             try:
                 self.client_socket.close()
             except:
                 pass
         
-        # Cerrar socket servidor si existe
         if self.server_socket:
             try:
                 self.server_socket.close()
             except:
                 pass
         
-        if self.connection_socket:
-            try:
-                self.connection_socket.close()
-            except:
-                pass
-        
-        print("🔌 Conexión TCP cerrada")
-    
-    # Métodos auxiliares para compatibilidad
-    def _get_local_ip(self):
-        """Obtiene la IP local - para mostrar al host"""
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80))
-            ip = s.getsockname()[0]
-            s.close()
-            return ip
-        except:
-            return "127.0.0.1"
-    
-    def _send_connection_request(self):
-        """Método vacío para compatibilidad - ya no se usa en TCP"""
-        pass
-    
-    def _listen_for_connections(self):
-        """Método vacío para compatibilidad - ya no se usa en TCP"""
-        pass
-    
-    def _receive_messages(self):
-        """Método vacío para compatibilidad - reemplazado por _receive_tcp_messages"""
-        pass
-    
-    def _send_message(self, message, address):
-        """Método vacío para compatibilidad - reemplazado por _send_tcp_message"""
-        pass
+        print("🔌 Desconectado")
