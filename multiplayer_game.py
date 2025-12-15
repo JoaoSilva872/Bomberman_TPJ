@@ -31,7 +31,7 @@ class MultiplayerGame:
         self.is_host = is_host
         self.player_id = 1 if is_host else 2
         self.host_ip = host_ip
-        self.network = GameNetwork(is_host=is_host, host_ip=host_ip)
+        self.network = GameNetwork(is_host=is_host, host_ip=host_ip, port=4040)
         self.network_initialized = False
         
         # Mapa
@@ -75,12 +75,25 @@ class MultiplayerGame:
     def get_local_ip(self):
         """Obtiene la IP local de la máquina"""
         try:
+            # Intentar conectar a un servidor externo para obtener IP real
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            # No es necesario que el servidor esté activo, solo para determinar la interfaz
             s.connect(("8.8.8.8", 80))
             ip = s.getsockname()[0]
             s.close()
+            
+            # Si es localhost, intentar otra forma
+            if ip == "127.0.0.1" or ip.startswith("192.168") or ip.startswith("10."):
+                # Intentar obtener todas las IPs
+                hostname = socket.gethostname()
+                all_ips = socket.gethostbyname_ex(hostname)[2]
+                for potential_ip in all_ips:
+                    if potential_ip.startswith("192.168") or potential_ip.startswith("10."):
+                        return potential_ip
+            
             return ip
-        except:
+        except Exception as e:
+            print(f"⚠️ Error obteniendo IP: {e}")
             return "127.0.0.1"
     
     def initialize_network(self):
@@ -93,10 +106,10 @@ class MultiplayerGame:
                 # Si somos host, mostrar nuestra IP
                 if self.is_host:
                     local_ip = self.get_local_ip()
-                    print(f"📡 Host escuchando en {local_ip}:5555")
+                    print(f"📡 Host escuchando en {local_ip}:4040")
                     print("🔄 Esperando que un jugador se conecte...")
                 else:
-                    print(f"🔗 Intentando conectar a {self.network.host_ip}:5555")
+                    print(f"🔗 Intentando conectar a {self.network.host_ip}:4040")
                 
                 return True
             else:
@@ -538,12 +551,12 @@ class MultiplayerGame:
         if self.is_host:
             title = font_large.render("Esperando jugador...", True, (255, 255, 255))
             local_ip = self.get_local_ip()
-            ip_text = font_medium.render(f"Tu IP: {local_ip} - Puerto: 5555", True, (200, 200, 255))
+            ip_text = font_medium.render(f"Tu IP: {local_ip} - Puerto: 4040", True, (200, 200, 255))
             ip_rect = ip_text.get_rect(center=(self.LARGURA//2, self.ALTURA//2))
             self.JANELA.blit(ip_text, ip_rect)
         else:
             title = font_large.render("Conectando al host...", True, (255, 255, 255))
-            host_text = font_medium.render(f"Host: {self.host_ip} - Puerto: 5555", True, (200, 200, 255))
+            host_text = font_medium.render(f"Host: {self.host_ip} - Puerto: 4040", True, (200, 200, 255))
             host_rect = host_text.get_rect(center=(self.LARGURA//2, self.ALTURA//2))
             self.JANELA.blit(host_text, host_rect)
         

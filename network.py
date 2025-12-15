@@ -103,8 +103,8 @@ class GameNetwork:
             return False
     
     def _send_connection_request(self):
-        """Envía solicitud de conexión con reintentos"""
-        for attempt in range(3):
+        """Envía solicitud de conexión con reintentos mejorados"""
+        for attempt in range(5):  # Aumentar a 5 intentos
             try:
                 connection_msg = {
                     'type': MessageType.CONNECTION_REQUEST.value,
@@ -113,13 +113,23 @@ class GameNetwork:
                     'attempt': attempt
                 }
                 self._send_message(connection_msg, self.peer_address)
-                print(f"📤 Intento {attempt + 1}/3 de conexión...")
+                print(f"📤 Intento {attempt + 1}/5 de conexión a {self.peer_address}...")
                 
-                # Pequeña pausa entre intentos
-                time.sleep(0.3)
+                # Esperar respuesta con timeout
+                time.sleep(1)  # Dar más tiempo entre intentos
                 
+                # Verificar si ya recibimos aceptación
+                messages = self.get_messages()
+                for msg, addr in messages:
+                    if msg.get('type') == MessageType.CONNECTION_ACCEPTED.value:
+                        print("✅ Conexión aceptada recibida!")
+                        return True
+                        
             except Exception as e:
                 print(f"⚠️ Error en intento {attempt + 1}: {e}")
+        
+        print("❌ No se pudo establecer conexión después de 5 intentos")
+        return False
     
     def _listen_for_connections(self):
         """Escucha solicitudes de conexión (solo host) - SOLO UNA CONEXIÓN"""

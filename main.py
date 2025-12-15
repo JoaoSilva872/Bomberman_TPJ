@@ -26,7 +26,7 @@ def main():
                 continue  # Volver al menú principal
             elif modo_multijugador == "host":
                 print("🎮 Iniciando como Host...")
-                game = MultiplayerGame(is_host=True, host_ip='192.168.245.130')
+                game = MultiplayerGame(is_host=True, host_ip='172.20.10.2')
                 game.run()
             elif modo_multijugador == "client":
                 if ip:

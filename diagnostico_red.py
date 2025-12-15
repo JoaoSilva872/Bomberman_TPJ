@@ -24,7 +24,7 @@ def diagnosticar_red():
         print("❌ No se pudo obtener nombre de host")
     
     # Verificar si el puerto está libre
-    puerto = 5555
+    puerto = 4040
     try:
         test_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         test_socket.bind(('', puerto))
