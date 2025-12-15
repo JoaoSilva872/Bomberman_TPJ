@@ -22,7 +22,7 @@ class MessageType(Enum):
     CONNECTION_CHECK = 13
 
 class GameNetwork:
-    """Sistema de red TCP para el juego Bomberman - VERSIÓN MEJORADA Y ROBUSTA"""
+    """Sistema de red TCP para el juego Bomberman - VERSIÓN FUNCIONAL"""
     
     def __init__(self, is_host=False, host_ip='127.0.0.1', port=4040):
         self.is_host = is_host
@@ -51,16 +51,7 @@ class GameNetwork:
         self.heartbeat_interval = 2.0
         self.heartbeat_timeout = 15.0
         
-        # Estado del juego compartido
-        self.game_state = {
-            'players': {},
-            'bombs': [],
-            'objects': [],
-            'powerups': [],
-            'time': 0
-        }
-        
-        # Estadísticas para debug
+        # Estadísticas
         self.stats = {
             'messages_sent': 0,
             'messages_received': 0,
@@ -69,210 +60,143 @@ class GameNetwork:
             'last_heartbeat_sent': 0
         }
         
-        # Variables de control de threads
-        self.accept_thread = None
-        self.connect_thread = None
-        self.receive_thread = None
-        self.heartbeat_thread = None
-        
-        # Flag para controlar si ya se ha conectado alguien
-        self.connection_attempted = False
-        
     def initialize(self):
-        """Inicializa la conexión TCP"""
+        """Inicializa la conexión TCP - VERSIÓN SIMPLIFICADA"""
         try:
-            # Resetear estados
-            self.connection_attempted = False
-            
-            with self.connection_lock:
-                self.connected = False
-                self.connection_established = False
-                self.peer_address = None
-            
             if self.is_host:
-                # HOST: Crear socket servidor TCP
+                # HOST: Crear socket servidor
                 self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                self.server_socket.settimeout(0.5)
+                self.server_socket.settimeout(1.0)
                 
-                # Bind a todas las interfaces
+                # Bind
                 self.server_socket.bind(('0.0.0.0', self.port))
                 self.server_socket.listen(1)
                 
-                print(f"🎮 Host TCP iniciado en puerto {self.port}")
-                print("🔄 Esperando conexión de cliente...")
+                print(f"🎮 Host TCP en puerto {self.port}")
                 
-                # Mostrar IP local
-                local_ip = self._get_local_ip()
-                print(f"📡 IP para compartir: {local_ip}")
-                
-                # Thread para aceptar conexiones
-                self.accept_thread = threading.Thread(target=self._accept_connection_loop, daemon=True)
-                self.accept_thread.start()
+                # Thread para aceptar
+                threading.Thread(target=self._host_main, daemon=True).start()
                 
             else:
-                # CLIENTE: Configurar dirección del host
+                # CLIENTE
+                print(f"🔗 Conectando a {self.host_ip}:{self.port}")
                 self.peer_address = (self.host_ip, self.port)
-                print(f"🔗 Intentando conectar a {self.host_ip}:{self.port}")
                 
                 # Thread para conectar
-                self.connect_thread = threading.Thread(target=self._connect_to_host_loop, daemon=True)
-                self.connect_thread.start()
+                threading.Thread(target=self._client_main, daemon=True).start()
             
             return True
             
         except Exception as e:
-            print(f"❌ Error inicializando red TCP: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"❌ Error inicializando: {e}")
             return False
     
-    def _accept_connection_loop(self):
-        """Loop para aceptar conexiones - HOST"""
-        max_wait_time = 30  # 30 segundos máximo
-        start_time = time.time()
+    def _host_main(self):
+        """Función principal del host - SIMPLIFICADA"""
+        print("👂 Host esperando conexión...")
         
         try:
-            while self.running and not self.connection_established and time.time() - start_time < max_wait_time:
-                try:
-                    print(f"👂 Host esperando en puerto {self.port}...")
-                    
-                    # Aceptar conexión con timeout
-                    self.server_socket.settimeout(1.0)
-                    self.connection_socket, client_addr = self.server_socket.accept()
-                    
-                    print(f"✅ ¡Cliente conectado desde {client_addr}!")
-                    
-                    # Configurar socket
-                    self.client_socket = self.connection_socket
-                    self.client_socket.settimeout(0.1)
-                    
-                    with self.connection_lock:
-                        self.peer_address = client_addr
-                        self.connected = True
-                    
-                    # Iniciar threads de red
-                    self._start_network_threads()
-                    
-                    # Pequeña pausa para estabilizar
-                    time.sleep(0.2)
-                    
-                    # Enviar mensaje de bienvenida
-                    welcome_msg = {
-                        'type': MessageType.CONNECTION_ACCEPTED.value,
-                        'message': '¡Bienvenido!',
-                        'timestamp': time.time(),
-                        'player_id': 2,
-                        'data': {
-                            'status': 'connected',
-                            'player_id': 2
-                        }
-                    }
-                    
-                    if self._send_tcp_message(welcome_msg):
-                        print("📤 Mensaje de bienvenida enviado")
-                        
-                        # Marcar como establecido
-                        with self.connection_lock:
-                            self.connection_established = True
-                        
-                        print("✅ Conexión TCP completamente establecida")
-                        break  # Salir del loop
-                    else:
-                        print("❌ Error enviando bienvenida")
-                        self.client_socket.close()
-                        self.client_socket = None
-                        
-                except socket.timeout:
-                    continue  # Timeout normal, continuar esperando
-                except Exception as e:
-                    print(f"⚠️ Error en accept: {e}")
-                    continue
-                    
+            # Aceptar conexión
+            self.connection_socket, client_addr = self.server_socket.accept()
+            print(f"✅ Cliente conectado: {client_addr}")
+            
+            # Configurar
+            self.client_socket = self.connection_socket
+            self.client_socket.settimeout(0.1)
+            self.peer_address = client_addr
+            
+            with self.connection_lock:
+                self.connected = True
+                self.connection_established = True
+            
+            # Iniciar recepción INMEDIATAMENTE
+            threading.Thread(target=self._receive_loop, daemon=True).start()
+            
+            # Pequeña pausa para estabilizar
+            time.sleep(0.5)
+            
+            # Enviar confirmación
+            welcome_msg = {
+                'type': MessageType.CONNECTION_ACCEPTED.value,
+                'message': '¡Bienvenido!',
+                'timestamp': time.time(),
+                'player_id': 2,
+                'data': {'status': 'connected'}
+            }
+            
+            if self._send_tcp_message(welcome_msg):
+                print("📤 Confirmación enviada al cliente")
+            
+            # Iniciar heartbeat
+            threading.Thread(target=self._heartbeat_loop, daemon=True).start()
+            
+        except socket.timeout:
+            print("⏱️ Host: Timeout esperando conexión")
         except Exception as e:
-            print(f"❌ Error en accept_connection_loop: {e}")
-        
-        print(f"🔚 Host terminó de esperar conexiones")
+            print(f"❌ Host error: {e}")
     
-    def _connect_to_host_loop(self):
-        """Loop para conectar al host - CLIENTE"""
+    def _client_main(self):
+        """Función principal del cliente - SIMPLIFICADA"""
         max_attempts = 5
         attempt = 0
         
-        while self.running and attempt < max_attempts:
+        while attempt < max_attempts:
             try:
                 print(f"🔄 Intento {attempt + 1}/{max_attempts}")
                 
-                # Crear socket
+                # Conectar
                 self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self.client_socket.settimeout(3)  # 3 segundos para conectar
-                
-                print(f"🔗 Conectando a {self.host_ip}:{self.port}...")
+                self.client_socket.settimeout(5)
                 self.client_socket.connect((self.host_ip, self.port))
                 self.client_socket.settimeout(0.1)
                 
-                print("✅ Socket TCP conectado")
+                print("✅ Conectado al host")
                 
                 with self.connection_lock:
                     self.connected = True
+                    self.connection_established = True
                 
-                # Iniciar threads de red
-                self._start_network_threads()
+                # Iniciar recepción INMEDIATAMENTE
+                threading.Thread(target=self._receive_loop, daemon=True).start()
                 
-                # Pequeña pausa
-                time.sleep(0.2)
-                
-                # Enviar solicitud de conexión
+                # Enviar solicitud
                 request = {
                     'type': MessageType.CONNECTION_REQUEST.value,
                     'timestamp': time.time(),
                     'player_id': 2,
-                    'data': {
-                        'action': 'connect_request'
-                    }
+                    'data': {'action': 'connect'}
                 }
                 
-                if self._send_tcp_message(request):
-                    print("📤 Solicitud de conexión enviada")
-                    
-                    # Esperar confirmación
-                    print("⏳ Esperando confirmación del host...")
-                    confirmation_received = False
-                    
-                    for _ in range(50):  # Esperar hasta 5 segundos (50 * 0.1)
-                        messages = self.get_messages()
-                        for msg, _ in messages:
-                            if msg.get('type') == MessageType.CONNECTION_ACCEPTED.value:
-                                print("✅ Confirmación recibida del host")
-                                confirmation_received = True
-                                
-                                with self.connection_lock:
-                                    self.connection_established = True
-                                
-                                print("✅ Conexión TCP completamente establecida")
-                                break
-                        
-                        if confirmation_received:
-                            break
-                            
-                        time.sleep(0.1)
-                    
-                    if confirmation_received:
-                        break  # Conexión exitosa, salir del loop
-                    else:
-                        print("❌ No se recibió confirmación del host")
-                        
-                else:
+                if not self._send_tcp_message(request):
                     print("❌ Error enviando solicitud")
                 
+                # Esperar confirmación
+                print("⏳ Esperando confirmación...")
+                start_time = time.time()
+                
+                while time.time() - start_time < 10.0:  # 10 segundos máximo
+                    messages = self.get_messages()
+                    for msg, _ in messages:
+                        if msg.get('type') == MessageType.CONNECTION_ACCEPTED.value:
+                            print("✅ Confirmación recibida del host!")
+                            
+                            # Iniciar heartbeat
+                            threading.Thread(target=self._heartbeat_loop, daemon=True).start()
+                            return True
+                    
+                    time.sleep(0.1)
+                
+                print("❌ No se recibió confirmación")
+                
             except ConnectionRefusedError:
-                print(f"❌ Conexión rechazada")
+                print("❌ Conexión rechazada")
             except socket.timeout:
-                print(f"⏱️ Timeout de conexión")
+                print("⏱️ Timeout de conexión")
             except Exception as e:
-                print(f"⚠️ Error en conexión: {e}")
+                print(f"⚠️ Error: {e}")
             
-            # Limpiar para reintentar
+            # Limpiar y reintentar
             if self.client_socket:
                 try:
                     self.client_socket.close()
@@ -289,44 +213,31 @@ class GameNetwork:
                 print(f"🔄 Reintentando en 2 segundos...")
                 time.sleep(2)
         
-        if not self.connection_established:
-            print("❌ No se pudo establecer conexión TCP")
+        print("❌ No se pudo conectar")
+        return False
     
-    def _start_network_threads(self):
-        """Inicia los threads de red"""
-        # Thread de recepción
-        self.receive_thread = threading.Thread(target=self._receive_messages_loop, daemon=True)
-        self.receive_thread.start()
-        
-        # Thread de heartbeat
-        self.heartbeat_thread = threading.Thread(target=self._heartbeat_loop, daemon=True)
-        self.heartbeat_thread.start()
-        
-        print("📡 Threads de red iniciados")
-    
-    def _receive_messages_loop(self):
-        """Loop principal para recibir mensajes"""
-        print("🎯 Thread de recepción iniciado")
+    def _receive_loop(self):
+        """Loop de recepción - ROBUSTO"""
+        print("📡 Thread de recepción iniciado")
         
         buffer = b""
         
         try:
             while self.running:
-                # Verificar si estamos conectados
-                with self.connection_lock:
-                    if not self.connected or not self.client_socket:
-                        time.sleep(0.1)
-                        continue
-                
                 try:
+                    # Verificar conexión
+                    with self.connection_lock:
+                        if not self.connected or not self.client_socket:
+                            time.sleep(0.1)
+                            continue
+                    
                     # Recibir datos
                     data = self.client_socket.recv(4096)
                     
                     if not data:
-                        print("📭 Conexión cerrada por el peer")
+                        print("📭 Conexión cerrada")
                         with self.connection_lock:
                             self.connected = False
-                            self.connection_established = False
                         break
                     
                     buffer += data
@@ -339,10 +250,10 @@ class GameNetwork:
                     # Procesar mensajes completos
                     while len(buffer) >= 4:
                         try:
-                            # Obtener longitud
+                            # Longitud del mensaje
                             msg_length = struct.unpack('!I', buffer[:4])[0]
                             
-                            # Verificar si tenemos mensaje completo
+                            # Verificar si tenemos el mensaje completo
                             if len(buffer) < 4 + msg_length:
                                 break
                             
@@ -355,7 +266,7 @@ class GameNetwork:
                             msg_type = message.get('type')
                             
                             # Procesar
-                            self._process_received_message(message)
+                            self._process_message(message)
                             
                         except struct.error:
                             print("⚠️ Error en formato de mensaje")
@@ -369,28 +280,30 @@ class GameNetwork:
                 except socket.timeout:
                     continue
                 except ConnectionResetError:
-                    print("⚠️ Conexión reseteada por el peer")
+                    print("⚠️ Conexión reseteada")
                     with self.connection_lock:
                         self.connected = False
-                        self.connection_established = False
+                    break
+                except OSError as e:
+                    if e.errno in [10038, 10054]:
+                        print("⚠️ Conexión cerrada")
+                    else:
+                        print(f"⚠️ OSError: {e}")
+                    with self.connection_lock:
+                        self.connected = False
                     break
                 except Exception as e:
-                    if "10054" in str(e):
-                        print("⚠️ Conexión cerrada por el host remoto")
-                    else:
-                        print(f"⚠️ Error en recepción: {e}")
-                    
+                    print(f"⚠️ Error en recepción: {e}")
                     with self.connection_lock:
                         self.connected = False
-                        self.connection_established = False
                     break
         
         except Exception as e:
-            print(f"💥 ERROR en receive_messages_loop: {e}")
+            print(f"💥 ERROR en receive_loop: {e}")
         
         print("🔌 Thread de recepción terminado")
     
-    def _process_received_message(self, message):
+    def _process_message(self, message):
         """Procesa un mensaje recibido"""
         msg_type = message.get('type')
         
@@ -398,9 +311,14 @@ class GameNetwork:
         with self.connection_lock:
             self.last_heartbeat_received = time.time()
         
+        # Log del mensaje recibido
+        print(f"📨 Mensaje recibido - Tipo: {msg_type}")
+        
         # Procesar según tipo
         if msg_type == MessageType.CONNECTION_ACCEPTED.value:
             print("✅ Conexión aceptada por el host")
+            with self.connection_lock:
+                self.connection_established = True
             
         elif msg_type == MessageType.CONNECTION_REQUEST.value and self.is_host:
             print("📨 Solicitud de conexión recibida")
@@ -426,7 +344,6 @@ class GameNetwork:
         try:
             with self.connection_lock:
                 if not self.connected or not self.client_socket:
-                    print("⚠️ No hay conexión para enviar")
                     return False
             
             # Serializar
@@ -441,12 +358,9 @@ class GameNetwork:
             return True
             
         except Exception as e:
-            print(f"❌ Error enviando mensaje: {e}")
-            
+            print(f"❌ Error enviando: {e}")
             with self.connection_lock:
                 self.connected = False
-                self.connection_established = False
-            
             return False
     
     def send_player_state(self, player_data):
@@ -566,24 +480,23 @@ class GameNetwork:
         self.running = False
         
         # Cerrar sockets
-        sockets = [self.client_socket, self.server_socket, self.connection_socket]
-        for sock in sockets:
-            if sock:
-                try:
-                    sock.close()
-                except:
-                    pass
+        if self.client_socket:
+            try:
+                self.client_socket.close()
+            except:
+                pass
         
-        # Esperar a que threads terminen
-        threads = [self.accept_thread, self.connect_thread, self.receive_thread, self.heartbeat_thread]
-        for thread in threads:
-            if thread and thread.is_alive():
-                thread.join(timeout=1.0)
+        if self.server_socket:
+            try:
+                self.server_socket.close()
+            except:
+                pass
         
-        # Resetear estados
-        with self.connection_lock:
-            self.connected = False
-            self.connection_established = False
+        if self.connection_socket:
+            try:
+                self.connection_socket.close()
+            except:
+                pass
         
         print("🔌 Conexión cerrada")
     
