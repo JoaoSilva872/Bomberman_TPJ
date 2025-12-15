@@ -440,15 +440,15 @@ class GameNetwork:
         return False
     
     def send_bomb_placed(self, bomb_data):
-        """Envía bomba colocada"""
+        """Envía la bomba y sigue jugando inmediatamente"""
         if self.is_connected():
             message = {
                 'type': MessageType.BOMB_PLACED.value,
                 'data': bomb_data,
                 'timestamp': time.time()
             }
-            return self._send_tcp_message(message)
-        return False
+            self._send_tcp_message(message)
+            # ✅ No esperamos nada, confiamos en que TCP lo entrega.
     
     def send_object_destroyed(self, object_data):
         """Envía objeto destruido"""
