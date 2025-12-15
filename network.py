@@ -176,20 +176,18 @@ class GameNetwork:
                 if not self._send_tcp_message(request):
                     print("❌ Error enviando solicitud")
                 
-                # Esperar confirmación
+                # Esperar confirmación (CORRECCIÓN: Se verifica la bandera establecida en _process_message)
                 print("⏳ Esperando confirmación...")
                 start_time = time.time()
                 
                 while time.time() - start_time < 10.0:
-                    messages = self.get_messages()
-                    for msg, _ in messages:
-                        if msg.get('type') == MessageType.CONNECTION_ACCEPTED.value:
-                            print("✅ Confirmación recibida!")
+                    # CORRECCIÓN: Evitamos la condición de carrera: 
+                    # No consumimos mensajes con get_messages(). Solo verificamos la bandera.
+                    with self.connection_lock:
+                        if self.connection_established:
+                            print("✅ Confirmación verificada!")
                             
-                            with self.connection_lock:
-                                self.connection_established = True
-                            
-                            # Iniciar heartbeat
+                            # Iniciar heartbeat (lógica original)
                             threading.Thread(target=self._heartbeat_loop, daemon=True).start()
                             
                             print("✅ Cliente listo para jugar")
@@ -440,15 +438,15 @@ class GameNetwork:
         return False
     
     def send_bomb_placed(self, bomb_data):
-        """Envía la bomba y sigue jugando inmediatamente"""
+        """Envía bomba colocada"""
         if self.is_connected():
             message = {
                 'type': MessageType.BOMB_PLACED.value,
                 'data': bomb_data,
                 'timestamp': time.time()
             }
-            self._send_tcp_message(message)
-            # ✅ No esperamos nada, confiamos en que TCP lo entrega.
+            return self._send_tcp_message(message)
+        return False
     
     def send_object_destroyed(self, object_data):
         """Envía objeto destruido"""
