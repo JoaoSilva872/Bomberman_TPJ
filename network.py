@@ -22,7 +22,7 @@ class MessageType(Enum):
     CONNECTION_CHECK = 13
 
 class GameNetwork:
-    """Sistema de red TCP para el juego Bomberman - VERSIÓN FUNCIONAL"""
+    """Sistema de red TCP para el juego Bomberman - VERSIÓN ESTABLE"""
     
     def __init__(self, is_host=False, host_ip='127.0.0.1', port=4040):
         self.is_host = is_host
@@ -46,10 +46,10 @@ class GameNetwork:
         # Buffer para mensajes recibidos
         self.received_messages = []
         
-        # Heartbeat
+        # Heartbeat - AJUSTADO PARA MÁS ESTABILIDAD
         self.last_heartbeat_received = time.time()
-        self.heartbeat_interval = 2.0
-        self.heartbeat_timeout = 15.0
+        self.heartbeat_interval = 3.0  # Más lento para reducir tráfico
+        self.heartbeat_timeout = 30.0  # Mucho más tolerante
         
         # Estadísticas
         self.stats = {
@@ -60,8 +60,12 @@ class GameNetwork:
             'last_heartbeat_sent': 0
         }
         
+        # Para controlar flood de mensajes
+        self.last_player_state_sent = 0
+        self.player_state_min_interval = 0.05  # 20 mensajes por segundo máximo
+        
     def initialize(self):
-        """Inicializa la conexión TCP - VERSIÓN SIMPLIFICADA"""
+        """Inicializa la conexión TCP"""
         try:
             if self.is_host:
                 # HOST: Crear socket servidor
@@ -93,7 +97,7 @@ class GameNetwork:
             return False
     
     def _host_main(self):
-        """Función principal del host - SIMPLIFICADA"""
+        """Función principal del host"""
         print("👂 Host esperando conexión...")
         
         try:
@@ -110,11 +114,11 @@ class GameNetwork:
                 self.connected = True
                 self.connection_established = True
             
-            # Iniciar recepción INMEDIATAMENTE
+            # Iniciar recepción
             threading.Thread(target=self._receive_loop, daemon=True).start()
             
-            # Pequeña pausa para estabilizar
-            time.sleep(0.5)
+            # Pequeña pausa
+            time.sleep(0.3)
             
             # Enviar confirmación
             welcome_msg = {
@@ -126,10 +130,12 @@ class GameNetwork:
             }
             
             if self._send_tcp_message(welcome_msg):
-                print("📤 Confirmación enviada al cliente")
+                print("📤 Confirmación enviada")
             
             # Iniciar heartbeat
             threading.Thread(target=self._heartbeat_loop, daemon=True).start()
+            
+            print("✅ Host listo para jugar")
             
         except socket.timeout:
             print("⏱️ Host: Timeout esperando conexión")
@@ -137,8 +143,8 @@ class GameNetwork:
             print(f"❌ Host error: {e}")
     
     def _client_main(self):
-        """Función principal del cliente - SIMPLIFICADA"""
-        max_attempts = 5
+        """Función principal del cliente"""
+        max_attempts = 3
         attempt = 0
         
         while attempt < max_attempts:
@@ -155,9 +161,8 @@ class GameNetwork:
                 
                 with self.connection_lock:
                     self.connected = True
-                    self.connection_established = True
                 
-                # Iniciar recepción INMEDIATAMENTE
+                # Iniciar recepción
                 threading.Thread(target=self._receive_loop, daemon=True).start()
                 
                 # Enviar solicitud
@@ -175,14 +180,19 @@ class GameNetwork:
                 print("⏳ Esperando confirmación...")
                 start_time = time.time()
                 
-                while time.time() - start_time < 10.0:  # 10 segundos máximo
+                while time.time() - start_time < 10.0:
                     messages = self.get_messages()
                     for msg, _ in messages:
                         if msg.get('type') == MessageType.CONNECTION_ACCEPTED.value:
-                            print("✅ Confirmación recibida del host!")
+                            print("✅ Confirmación recibida!")
+                            
+                            with self.connection_lock:
+                                self.connection_established = True
                             
                             # Iniciar heartbeat
                             threading.Thread(target=self._heartbeat_loop, daemon=True).start()
+                            
+                            print("✅ Cliente listo para jugar")
                             return True
                     
                     time.sleep(0.1)
@@ -210,20 +220,22 @@ class GameNetwork:
             
             attempt += 1
             if attempt < max_attempts:
-                print(f"🔄 Reintentando en 2 segundos...")
-                time.sleep(2)
+                print(f"🔄 Reintentando en 3 segundos...")
+                time.sleep(3)
         
         print("❌ No se pudo conectar")
         return False
     
     def _receive_loop(self):
-        """Loop de recepción - ROBUSTO"""
+        """Loop de recepción - MEJORADO"""
         print("📡 Thread de recepción iniciado")
         
         buffer = b""
+        error_count = 0
+        max_errors = 10
         
         try:
-            while self.running:
+            while self.running and error_count < max_errors:
                 try:
                     # Verificar conexión
                     with self.connection_lock:
@@ -235,12 +247,13 @@ class GameNetwork:
                     data = self.client_socket.recv(4096)
                     
                     if not data:
-                        print("📭 Conexión cerrada")
+                        print("📭 Conexión cerrada por el peer")
                         with self.connection_lock:
                             self.connected = False
                         break
                     
                     buffer += data
+                    error_count = 0  # Resetear contador de errores
                     
                     with self.connection_lock:
                         self.last_heartbeat_received = time.time()
@@ -252,6 +265,12 @@ class GameNetwork:
                         try:
                             # Longitud del mensaje
                             msg_length = struct.unpack('!I', buffer[:4])[0]
+                            
+                            # Verificar longitud válida (máximo 1MB)
+                            if msg_length > 1048576:
+                                print("⚠️ Mensaje demasiado grande, ignorando")
+                                buffer = b""
+                                break
                             
                             # Verificar si tenemos el mensaje completo
                             if len(buffer) < 4 + msg_length:
@@ -271,10 +290,12 @@ class GameNetwork:
                         except struct.error:
                             print("⚠️ Error en formato de mensaje")
                             buffer = b""
+                            error_count += 1
                             break
                         except Exception as e:
                             print(f"⚠️ Error procesando mensaje: {e}")
                             buffer = b""
+                            error_count += 1
                             break
                             
                 except socket.timeout:
@@ -286,7 +307,7 @@ class GameNetwork:
                     break
                 except OSError as e:
                     if e.errno in [10038, 10054]:
-                        print("⚠️ Conexión cerrada")
+                        print("⚠️ Conexión cerrada por el peer")
                     else:
                         print(f"⚠️ OSError: {e}")
                     with self.connection_lock:
@@ -294,9 +315,8 @@ class GameNetwork:
                     break
                 except Exception as e:
                     print(f"⚠️ Error en recepción: {e}")
-                    with self.connection_lock:
-                        self.connected = False
-                    break
+                    error_count += 1
+                    time.sleep(0.1)
         
         except Exception as e:
             print(f"💥 ERROR en receive_loop: {e}")
@@ -304,15 +324,16 @@ class GameNetwork:
         print("🔌 Thread de recepción terminado")
     
     def _process_message(self, message):
-        """Procesa un mensaje recibido"""
+        """Procesa un mensaje recibido - SILENCIOSO para mensajes frecuentes"""
         msg_type = message.get('type')
         
         # Actualizar heartbeat
         with self.connection_lock:
             self.last_heartbeat_received = time.time()
         
-        # Log del mensaje recibido
-        print(f"📨 Mensaje recibido - Tipo: {msg_type}")
+        # Solo mostrar logs para mensajes importantes
+        if msg_type not in [MessageType.PLAYER_STATE.value, MessageType.HEARTBEAT.value]:
+            print(f"📨 Mensaje recibido - Tipo: {msg_type}")
         
         # Procesar según tipo
         if msg_type == MessageType.CONNECTION_ACCEPTED.value:
@@ -340,7 +361,7 @@ class GameNetwork:
             self.received_messages.append((message, None))
     
     def _send_tcp_message(self, message):
-        """Envía un mensaje TCP"""
+        """Envía un mensaje TCP - CON RECONEXIÓN"""
         try:
             with self.connection_lock:
                 if not self.connected or not self.client_socket:
@@ -350,6 +371,11 @@ class GameNetwork:
             serialized = pickle.dumps(message)
             length = len(serialized)
             
+            # Verificar tamaño
+            if length > 1048576:
+                print("⚠️ Mensaje demasiado grande para enviar")
+                return False
+            
             # Enviar longitud + mensaje
             header = struct.pack('!I', length)
             self.client_socket.sendall(header + serialized)
@@ -357,22 +383,60 @@ class GameNetwork:
             self.stats['messages_sent'] += 1
             return True
             
+        except BrokenPipeError:
+            print("🔌 Conexión rota al enviar")
+            self._try_reconnect()
+            return False
         except Exception as e:
             print(f"❌ Error enviando: {e}")
-            with self.connection_lock:
-                self.connected = False
+            self._try_reconnect()
             return False
     
+    def _try_reconnect(self):
+        """Intenta reconectar si se pierde la conexión"""
+        if not self.running:
+            return
+        
+        print("🔄 Intentando reconectar...")
+        
+        with self.connection_lock:
+            self.connected = False
+            self.connection_established = False
+        
+        # Cerrar sockets viejos
+        if self.client_socket:
+            try:
+                self.client_socket.close()
+            except:
+                pass
+        
+        # Solo cliente intenta reconectar automáticamente
+        if not self.is_host:
+            print("🔄 Cliente intentando reconectar al host...")
+            # Intentar reconectar en un thread separado
+            threading.Thread(target=self._client_main, daemon=True).start()
+    
     def send_player_state(self, player_data):
-        """Envía estado del jugador"""
+        """Envía estado del jugador - CON THROTTLING"""
+        current_time = time.time()
+        
+        # Throttling: no enviar demasiados mensajes seguidos
+        if current_time - self.last_player_state_sent < self.player_state_min_interval:
+            return True  # Simular éxito pero no enviar realmente
+        
         if self.is_connected():
             message = {
                 'type': MessageType.PLAYER_STATE.value,
                 'player_id': 1 if self.is_host else 2,
                 'data': player_data,
-                'timestamp': time.time()
+                'timestamp': current_time
             }
-            return self._send_tcp_message(message)
+            
+            success = self._send_tcp_message(message)
+            if success:
+                self.last_player_state_sent = current_time
+            return success
+        
         return False
     
     def send_bomb_placed(self, bomb_data):
@@ -420,15 +484,18 @@ class GameNetwork:
         return False
     
     def _heartbeat_loop(self):
-        """Loop de heartbeat"""
+        """Loop de heartbeat - MEJORADO"""
         print("❤️ Thread de heartbeat iniciado")
+        
+        consecutive_failures = 0
+        max_failures = 3
         
         while self.running:
             try:
                 current_time = time.time()
                 
-                # Estadísticas
-                if current_time - self.stats['last_debug_time'] > 10:
+                # Estadísticas cada 30 segundos (menos frecuente)
+                if current_time - self.stats['last_debug_time'] > 30:
                     print(f"📊 Stats: Enviados={self.stats['messages_sent']}, Recibidos={self.stats['messages_received']}")
                     self.stats['last_debug_time'] = current_time
                 
@@ -437,25 +504,36 @@ class GameNetwork:
                     if current_time - self.stats['last_heartbeat_sent'] >= self.heartbeat_interval:
                         heartbeat = {
                             'type': MessageType.HEARTBEAT.value,
-                            'timestamp': current_time
+                            'timestamp': current_time,
+                            'seq': self.stats['messages_sent']
                         }
                         
                         if self._send_tcp_message(heartbeat):
                             self.stats['last_heartbeat_sent'] = current_time
+                            consecutive_failures = 0
+                        else:
+                            consecutive_failures += 1
+                            print(f"⚠️ Heartbeat fallido ({consecutive_failures}/{max_failures})")
                 
-                # Verificar timeout
+                # Verificar timeout (más tolerante)
                 with self.connection_lock:
                     time_since = current_time - self.last_heartbeat_received
                     if self.connected and time_since > self.heartbeat_timeout:
-                        print(f"⚠️ Sin mensajes por {time_since:.1f}s")
+                        print(f"⚠️ Sin heartbeat por {time_since:.1f}s")
                         self.connected = False
                         self.connection_established = False
                 
-                time.sleep(0.5)
+                # Si hay muchos fallos consecutivos, intentar reconectar
+                if consecutive_failures >= max_failures and not self.is_host:
+                    print("🔄 Demasiados fallos, intentando reconectar...")
+                    self._try_reconnect()
+                    consecutive_failures = 0
+                
+                time.sleep(1.0)  # Más lento
                 
             except Exception as e:
                 print(f"⚠️ Error en heartbeat: {e}")
-                time.sleep(1)
+                time.sleep(2)
         
         print("💔 Thread de heartbeat terminado")
     
@@ -476,8 +554,11 @@ class GameNetwork:
             return time_since < self.heartbeat_timeout
     
     def disconnect(self):
-        """Cierra conexión"""
+        """Cierra conexión limpiamente"""
         self.running = False
+        
+        # Pequeña pausa antes de cerrar
+        time.sleep(0.1)
         
         # Cerrar sockets
         if self.client_socket:
@@ -498,7 +579,7 @@ class GameNetwork:
             except:
                 pass
         
-        print("🔌 Conexión cerrada")
+        print("🔌 Conexión cerrada limpiamente")
     
     def _get_local_ip(self):
         """Obtiene IP local"""

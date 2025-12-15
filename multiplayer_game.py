@@ -27,11 +27,14 @@ class MultiplayerGame:
         self.player_size = self.TILE_SIZE * self.PLAYER_TILES
         self.player_vel = self.TILE_SIZE
         
-        # Red
+        # Red - MEJORADO: Con configuración optimizada
         self.is_host = is_host
         self.player_id = 1 if is_host else 2
         self.host_ip = host_ip
-        self.network = GameNetwork(is_host=is_host, host_ip=host_ip, port=4040)
+        
+        # Intentar puertos alternativos si 4040 falla
+        port = self._get_available_port(4040)
+        self.network = GameNetwork(is_host=is_host, host_ip=host_ip, port=port)
         self.network_initialized = False
         
         # Mapa
@@ -54,72 +57,107 @@ class MultiplayerGame:
         # Objetos (compartidos)
         self.mapa.crear_obstaculos("level2")
         
-        # Controladores
-        self.move_delay = 100
+        # Controladores - MEJORADO: Timing optimizado
+        self.move_delay = 100  # ms entre movimientos
         self.last_move_time = 0
         self.clock = pygame.time.Clock()
         self.tiempo_inicio = pygame.time.get_ticks()
         self.bomba_presionada = False
-        self.tecla_r_presionada = False  # Para control remoto
+        self.tecla_r_presionada = False
+        
+        # Control de red - MEJORADO: Envíos optimizados
         self.last_network_update = 0
-        self.network_update_interval = 0.033
+        self.network_update_interval = 0.033  # ~30 FPS para red
+        self.last_player_state_sent = 0
+        self.player_state_min_interval = 0.1   # 10 FPS máximo para estado del jugador
+        
+        # Para throttling inteligente
+        self.last_player_position = (0, 0)
+        self.position_change_threshold = 5  # Píxeles mínimo para considerar movimiento
         
         # Estado del juego
         self.game_running = True
         self.waiting_for_connection = True
         self.connection_start_time = time.time()
+        self.connection_timeout = 60  # 60 segundos máximo
+        
+        # Estadísticas
+        self.network_stats = {
+            'player_states_sent': 0,
+            'bombs_sent': 0,
+            'objects_synced': 0,
+            'powerups_synced': 0,
+            'last_stats_display': time.time()
+        }
         
         # Inicializar red
         self.initialize_network()
     
+    def _get_available_port(self, preferred_port):
+        """Obtiene un puerto disponible, intentando alternativas si es necesario"""
+        ports_to_try = [preferred_port, 5050, 6060, 7070, 8080]
+        
+        for port in ports_to_try:
+            try:
+                test_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                test_socket.settimeout(1)
+                test_socket.bind(('127.0.0.1', port))
+                test_socket.close()
+                if port != preferred_port:
+                    print(f"⚠️ Puerto {preferred_port} ocupado, usando {port}")
+                return port
+            except:
+                continue
+        
+        print(f"⚠️ No se encontraron puertos libres, usando {preferred_port}")
+        return preferred_port
+    
     def get_local_ip(self):
         """Obtiene la IP local de la máquina"""
         try:
-            # Intentar conectar a un servidor externo para obtener IP real
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            # No es necesario que el servidor esté activo, solo para determinar la interfaz
             s.connect(("8.8.8.8", 80))
             ip = s.getsockname()[0]
             s.close()
-            
-            # Si es localhost, intentar otra forma
-            if ip == "127.0.0.1" or ip.startswith("192.168") or ip.startswith("10."):
-                # Intentar obtener todas las IPs
-                hostname = socket.gethostname()
-                all_ips = socket.gethostbyname_ex(hostname)[2]
-                for potential_ip in all_ips:
-                    if potential_ip.startswith("192.168") or potential_ip.startswith("10."):
-                        return potential_ip
-            
             return ip
-        except Exception as e:
-            print(f"⚠️ Error obteniendo IP: {e}")
+        except:
             return "127.0.0.1"
     
     def initialize_network(self):
-        """Inicializa la conexión de red"""
-        try:
-            if self.network.initialize():
-                self.network_initialized = True
-                print("✅ Red inicializada correctamente")
+        """Inicializa la conexión de red con reintentos"""
+        max_retries = 2
+        
+        for retry in range(max_retries):
+            try:
+                print(f"🔄 Intento {retry + 1}/{max_retries} de inicializar red...")
                 
-                # Si somos host, mostrar nuestra IP
-                if self.is_host:
-                    local_ip = self.get_local_ip()
-                    print(f"📡 Host escuchando en {local_ip}:4040")
-                    print("🔄 Esperando que un jugador se conecte...")
+                if self.network.initialize():
+                    self.network_initialized = True
+                    print("✅ Red inicializada correctamente")
+                    
+                    # Si somos host, mostrar nuestra IP
+                    if self.is_host:
+                        local_ip = self.get_local_ip()
+                        print(f"📡 Host escuchando en {local_ip}:{self.network.port}")
+                        print("🔄 Esperando que un jugador se conecte...")
+                    else:
+                        print(f"🔗 Intentando conectar a {self.network.host_ip}:{self.network.port}")
+                    
+                    return True
                 else:
-                    print(f"🔗 Intentando conectar a {self.network.host_ip}:4040")
-                
-                return True
-            else:
-                print("❌ Error al inicializar la red")
-                self.game_running = False
-                return False
-        except Exception as e:
-            print(f"❌ Excepción al inicializar red: {e}")
-            self.game_running = False
-            return False
+                    print(f"❌ Error al inicializar la red (intento {retry + 1})")
+                    
+            except Exception as e:
+                print(f"❌ Excepción al inicializar red: {e}")
+            
+            # Esperar antes de reintentar
+            if retry < max_retries - 1:
+                print("🔄 Reintentando en 2 segundos...")
+                time.sleep(2)
+        
+        print("❌ No se pudo inicializar la red después de varios intentos")
+        self.game_running = False
+        return False
     
     def set_initial_positions(self):
         """Establece posiciones iniciales de los jugadores"""
@@ -184,27 +222,16 @@ class MultiplayerGame:
                     
                 # Debug: mostrar estadísticas de red
                 if event.key == pygame.K_F3:
-                    print("=== DEBUG RED ===")
-                    print(f"Conectado: {self.network.is_connected()}")
-                    print(f"Connection Established: {self.network.connection_established}")
-                    print(f"Mensajes enviados: {self.network.stats['messages_sent']}")
-                    print(f"Mensajes recibidos: {self.network.stats['messages_received']}")
-                    print(f"Errores: {self.network.stats['connection_errors']}")
-                    print(f"Peer Address: {self.network.peer_address}")
+                    self._show_network_debug()
                     
                 # Debug: mostrar info de power-ups
                 if event.key == pygame.K_p:
-                    print("=== POWER-UPS INFO ===")
-                    print(f"Jugador Local:")
-                    print(f"  Max bombas: {self.local_player.max_bombas}")
-                    print(f"  Rango explosión: {self.local_player.rango_explosion}")
-                    print(f"  Velocidad boost: {self.local_player.velocidad_boost:.1f}")
-                    print(f"  Escudo activo: {self.local_player.tiene_escudo}")
-                    print(f"  Control remoto: {self.local_player.tiene_control_remoto}")
-                    print(f"Jugador Remoto:")
-                    print(f"  Max bombas: {self.remote_player.max_bombas}")
-                    print(f"  Rango explosión: {self.remote_player.rango_explosion}")
-                    
+                    self._show_powerup_info()
+                
+                # Debug: mostrar estadísticas del juego
+                if event.key == pygame.K_F4:
+                    self._show_game_stats()
+                
                 # Salir durante espera
                 if event.key == pygame.K_ESCAPE:
                     if self.waiting_for_connection:
@@ -219,6 +246,52 @@ class MultiplayerGame:
                     self.tecla_r_presionada = False
         
         return True
+    
+    def _show_network_debug(self):
+        """Muestra información de debug de red"""
+        print("=== DEBUG RED ===")
+        print(f"Conectado: {self.network.is_connected()}")
+        print(f"Connection Established: {self.network.connection_established}")
+        print(f"Player ID: {self.player_id}")
+        print(f"Host: {self.is_host}")
+        print(f"Dirección peer: {self.network.peer_address}")
+        print(f"Mensajes enviados: {self.network.stats['messages_sent']}")
+        print(f"Mensajes recibidos: {self.network.stats['messages_received']}")
+        print(f"Errores: {self.network.stats['connection_errors']}")
+        print(f"Tiempo sin heartbeat: {time.time() - self.network.last_heartbeat_received:.1f}s")
+        
+        # Estadísticas propias
+        print(f"Player states enviados: {self.network_stats['player_states_sent']}")
+        print(f"Bombas enviadas: {self.network_stats['bombs_sent']}")
+        print(f"Objetos sincronizados: {self.network_stats['objects_synced']}")
+        print(f"Power-ups sincronizados: {self.network_stats['powerups_synced']}")
+    
+    def _show_powerup_info(self):
+        """Muestra información de power-ups"""
+        print("=== POWER-UPS INFO ===")
+        print(f"Jugador Local (ID: {self.local_player.id}):")
+        print(f"  Max bombas: {self.local_player.max_bombas}")
+        print(f"  Bombas colocadas: {self.local_player.bombas_colocadas_actual}/{self.local_player.max_bombas}")
+        print(f"  Rango explosión: {self.local_player.rango_explosion}")
+        print(f"  Velocidad boost: {self.local_player.velocidad_boost:.1f}")
+        print(f"  Escudo activo: {self.local_player.tiene_escudo}")
+        print(f"  Control remoto: {self.local_player.tiene_control_remoto}")
+        print(f"Jugador Remoto (ID: {self.remote_player.id}):")
+        print(f"  Max bombas: {self.remote_player.max_bombas}")
+        print(f"  Rango explosión: {self.remote_player.rango_explosion}")
+        print(f"  Velocidad boost: {self.remote_player.velocidad_boost:.1f}")
+        print(f"  Escudo activo: {self.remote_player.tiene_escudo}")
+        print(f"  Control remoto: {self.remote_player.tiene_control_remoto}")
+    
+    def _show_game_stats(self):
+        """Muestra estadísticas del juego"""
+        print("=== ESTADÍSTICAS DEL JUEGO ===")
+        print(f"Bombas locales activas: {len(self.local_bombs)}")
+        print(f"Bombas remotas activas: {len(self.remote_bombs)}")
+        print(f"Power-ups en pantalla: {len(self.powerup_system.powerups)}")
+        print(f"Objetos destruidos: {len([obj for obj in Object.objects if obj.destruido])}/{len(Object.objects)}")
+        print(f"FPS: {int(self.clock.get_fps())}")
+        print(f"Tiempo jugado: {(pygame.time.get_ticks() - self.tiempo_inicio) / 1000:.1f}s")
     
     def place_bomb(self):
         """Coloca una bomba en la posición actual"""
@@ -245,7 +318,7 @@ class MultiplayerGame:
             nueva_bomba = Bomba(grid_x, grid_y, self.player_size, 
                               jugador_id=self.player_id,
                               rango_explosion=self.local_player.rango_explosion)
-            nueva_bomba.es_remota = False  # Es bomba local
+            nueva_bomba.es_remota = False
             self.local_bombs.append(nueva_bomba)
             
             # Marcar que el jugador colocó una bomba con referencia
@@ -262,6 +335,7 @@ class MultiplayerGame:
             
             if self.network.send_bomb_placed(bomb_data):
                 print(f"💣 Bomba colocada en ({grid_x}, {grid_y}) - Rango: {nueva_bomba.rango_explosion}")
+                self.network_stats['bombs_sent'] += 1
             else:
                 print("⚠️ Error enviando bomba a la red")
             
@@ -290,14 +364,13 @@ class MultiplayerGame:
         return grid_x, grid_y
     
     def update(self, tiempo_actual):
-        """Actualiza el estado del juego"""
-        # 1. Procesar mensajes de red
+        """Actualiza el estado del juego - OPTIMIZADO"""
+        # 1. Procesar mensajes de red (SIEMPRE primero)
         self.process_network_messages()
         
         # 2. Actualizar movimiento local CON COLISIÓN DE BOMBAS
         self.last_move_time += self.clock.get_time()
         if self.last_move_time >= self.move_delay:
-            # Pasar todas las bombas para colisión (locales y remotas)
             todas_bombas = self.local_bombs + self.remote_bombs
             self.local_player.actualizar_movimiento(self.LARGURA, self.ALTURA, todas_bombas)
             self.last_move_time = 0
@@ -318,12 +391,13 @@ class MultiplayerGame:
             self.local_player.aplicar_powerup(tipo_powerup)
             # Enviar a red
             powerup_data = {
-                'x': int(jugador_rect.x),  # Asegurar que son ints
+                'x': int(jugador_rect.x),
                 'y': int(jugador_rect.y),
                 'type': tipo_powerup.value,
                 'player_id': self.player_id
             }
-            self.network.send_powerup_collected(powerup_data)
+            if self.network.send_powerup_collected(powerup_data):
+                self.network_stats['powerups_synced'] += 1
         
         # 5. Actualizar animación local
         self.local_player.actualizar_animacion(tiempo_actual, pygame.key.get_pressed())
@@ -331,11 +405,27 @@ class MultiplayerGame:
         # 6. Actualizar bombas
         self.update_bombs()
         
-        # 7. Enviar estado del jugador
+        # 7. Enviar estado del jugador (CON THROTTLING INTELIGENTE)
         current_time = time.time()
-        if current_time - self.last_network_update >= self.network_update_interval:
-            self.send_player_state()
-            self.last_network_update = current_time
+        if current_time - self.last_player_state_sent >= self.player_state_min_interval:
+            # Verificar si realmente hay cambios significativos
+            current_pos = (self.local_player.x, self.local_player.y)
+            dx = abs(current_pos[0] - self.last_player_position[0])
+            dy = abs(current_pos[1] - self.last_player_position[1])
+            
+            # Enviar si se movió significativamente o si cambió estado importante
+            keys = pygame.key.get_pressed()
+            is_moving = any([
+                keys[pygame.K_w], keys[pygame.K_UP],
+                keys[pygame.K_s], keys[pygame.K_DOWN],
+                keys[pygame.K_a], keys[pygame.K_LEFT],
+                keys[pygame.K_d], keys[pygame.K_RIGHT]
+            ])
+            
+            if is_moving or dx > self.position_change_threshold or dy > self.position_change_threshold:
+                self.send_player_state()
+                self.last_player_position = current_pos
+                self.last_player_state_sent = current_time
         
         # 8. Verificar fin del juego
         if not self.local_player.is_alive():
@@ -347,7 +437,15 @@ class MultiplayerGame:
                     'player_id': self.player_id,
                     'timestamp': time.time()
                 }
-                self.network._send_message(game_over_msg, self.network.peer_address)
+                # Enviar mensaje de fin de juego
+                self.network._send_tcp_message(game_over_msg)
+        
+        # 9. Mostrar estadísticas periódicamente (cada 30 segundos)
+        if current_time - self.network_stats['last_stats_display'] > 30:
+            print(f"📊 [Stats] Player States: {self.network_stats['player_states_sent']}, "
+                  f"Bombs: {self.network_stats['bombs_sent']}, "
+                  f"Syncs: {self.network_stats['objects_synced']}+{self.network_stats['powerups_synced']}")
+            self.network_stats['last_stats_display'] = current_time
     
     def update_bombs(self):
         """Actualiza todas las bombas (LOCALES Y REMOTAS)"""
@@ -361,7 +459,7 @@ class MultiplayerGame:
                 bomba.recien_explotada = False
                 self.process_explosion_destruction(bomba, is_local=True)
             
-            # Verificar daño al jugador local (la bomba propia no daña inmediatamente)
+            # Verificar daño al jugador local
             if bomba.explotada and bomba.explosion_activa() and not bomba.causou_dano:
                 self.check_player_damage(bomba, self.local_player)
             
@@ -405,7 +503,6 @@ class MultiplayerGame:
                     if obj.rect.colliderect(rect):
                         obj.destruido = True
                         destroyed_objects.append((obj.rect.x, obj.rect.y))
-                        print(f"💥 {'[LOCAL]' if is_local else '[REMOTO]'} Objeto destruido en ({obj.rect.x}, {obj.rect.y})")
                         
                         # Intentar spawnear power-up (solo si es bomba local)
                         if is_local:
@@ -422,7 +519,7 @@ class MultiplayerGame:
                                     'type': powerup.tipo.value
                                 }
                                 if self.network.send_powerup_spawned(powerup_data):
-                                    print(f"📤 [SYNC] Enviando power-up en ({obj.rect.x}, {obj.rect.y})")
+                                    self.network_stats['powerups_synced'] += 1
                         break
         
         # Sincronizar objetos destruidos (solo si es bomba local)
@@ -430,7 +527,7 @@ class MultiplayerGame:
             for x, y in destroyed_objects:
                 object_data = {'x': int(x), 'y': int(y)}
                 if self.network.send_object_destroyed(object_data):
-                    print(f"📤 [SYNC] Enviando destrucción de objeto en ({x}, {y})")
+                    self.network_stats['objects_synced'] += 1
     
     def check_player_damage(self, bomba, player):
         """Verifica si una bomba daña al jugador"""
@@ -444,11 +541,11 @@ class MultiplayerGame:
                 break
     
     def send_player_state(self):
-        """Envía el estado del jugador local a la red"""
+        """Envía el estado del jugador local a la red - OPTIMIZADO"""
         if self.network.is_connected():
             player_data = {
-                'x': self.local_player.x,
-                'y': self.local_player.y,
+                'x': int(self.local_player.x),
+                'y': int(self.local_player.y),
                 'direction': self.local_player.direccion_actual,
                 'frame': self.local_player.frame_actual,
                 'life': self.local_player.life,
@@ -456,7 +553,11 @@ class MultiplayerGame:
                 'powerup_state': self.local_player.get_estado_powerups(),
                 'timestamp': time.time()
             }
-            self.network.send_player_state(player_data)
+            
+            if self.network.send_player_state(player_data):
+                self.network_stats['player_states_sent'] += 1
+                return True
+        return False
     
     def process_network_messages(self):
         """Procesa los mensajes recibidos de la red"""
@@ -495,11 +596,9 @@ class MultiplayerGame:
                                      jugador_id=data['player_id'],
                                      rango_explosion=rango)
                         bomba.tiempo_creacion = data.get('time', time.time())
-                        bomba.es_remota = True  # Marcar como bomba remota
-                        # Para bombas remotas, son sólidas desde el principio para el jugador local
+                        bomba.es_remota = True
                         bomba.es_solida_para_otros = True
                         self.remote_bombs.append(bomba)
-                        print(f"💣 Bomba remota recibida en ({data['x']}, {data['y']}) - ID: {data['player_id']} - Rango: {rango}")
             
             elif msg_type == MessageType.OBJECT_DESTROYED.value:
                 # Sincronizar objeto destruido
@@ -515,16 +614,14 @@ class MultiplayerGame:
                         tipo_powerup, 
                         self.player_size
                     )
-                    print(f"✨ Power-up '{powerup.nombre}' remoto apareció en ({data['x']}, {data['y']})")
                 except:
-                    print(f"⚠️ Error al spawnear power-up remoto en ({data['x']}, {data['y']})")
+                    pass
             
             elif msg_type == MessageType.POWERUP_COLLECTED.value:
                 # Remover power-up recogido por el otro jugador
                 powerup = self.powerup_system.get_powerup_at(data['x'], data['y'])
                 if powerup:
                     powerup.recoger()
-                    print(f"🎯 Jugador remoto recogió power-up en ({data['x']}, {data['y']})")
             
             elif msg_type == MessageType.GAME_OVER.value:
                 print("⚠️ El otro jugador se desconectó")
@@ -537,11 +634,10 @@ class MultiplayerGame:
         for obj in Object.objects:
             if obj.rect.x == x and obj.rect.y == y and not obj.destruido:
                 obj.destruido = True
-                print(f"💥 [SYNC] Objeto destruido remotamente en ({x}, {y})")
                 break
     
     def draw_waiting_screen(self):
-        """Dibuja pantalla de espera de conexión"""
+        """Dibuja pantalla de espera de conexión - MEJORADA"""
         self.JANELA.fill((0, 0, 30))
         
         font_large = pygame.font.Font(None, 60)
@@ -551,12 +647,12 @@ class MultiplayerGame:
         if self.is_host:
             title = font_large.render("Esperando jugador...", True, (255, 255, 255))
             local_ip = self.get_local_ip()
-            ip_text = font_medium.render(f"Tu IP: {local_ip} - Puerto: 4040", True, (200, 200, 255))
+            ip_text = font_medium.render(f"Tu IP: {local_ip} - Puerto: {self.network.port}", True, (200, 200, 255))
             ip_rect = ip_text.get_rect(center=(self.LARGURA//2, self.ALTURA//2))
             self.JANELA.blit(ip_text, ip_rect)
         else:
             title = font_large.render("Conectando al host...", True, (255, 255, 255))
-            host_text = font_medium.render(f"Host: {self.host_ip} - Puerto: 4040", True, (200, 200, 255))
+            host_text = font_medium.render(f"Host: {self.host_ip} - Puerto: {self.network.port}", True, (200, 200, 255))
             host_rect = host_text.get_rect(center=(self.LARGURA//2, self.ALTURA//2))
             self.JANELA.blit(host_text, host_rect)
         
@@ -580,9 +676,40 @@ class MultiplayerGame:
         
         # Tiempo de espera
         wait_time = int(time.time() - self.connection_start_time)
-        time_text = font_small.render(f"Tiempo de espera: {wait_time}s", True, (200, 200, 200))
+        time_text = font_small.render(f"Tiempo de espera: {wait_time}s/{self.connection_timeout}s", True, (200, 200, 200))
         time_rect = time_text.get_rect(center=(self.LARGURA//2, self.ALTURA//2 + 100))
         self.JANELA.blit(time_text, time_rect)
+        
+        # Barra de progreso
+        progress_width = 400
+        progress_height = 20
+        progress_x = self.LARGURA//2 - progress_width//2
+        progress_y = self.ALTURA//2 + 140
+        
+        # Fondo de la barra
+        pygame.draw.rect(self.JANELA, (50, 50, 80), 
+                        (progress_x, progress_y, progress_width, progress_height))
+        
+        # Barra de progreso
+        progress = min(wait_time / self.connection_timeout, 1.0)
+        progress_fill = int(progress_width * progress)
+        
+        if progress < 0.7:
+            progress_color = (0, 150, 255)
+        else:
+            progress_color = (255, 100, 0)
+        
+        pygame.draw.rect(self.JANELA, progress_color,
+                        (progress_x, progress_y, progress_fill, progress_height))
+        
+        # Borde de la barra
+        pygame.draw.rect(self.JANELA, (100, 100, 255),
+                        (progress_x, progress_y, progress_width, progress_height), 2)
+        
+        # Porcentaje
+        percent_text = font_small.render(f"{int(progress * 100)}%", True, (255, 255, 255))
+        percent_rect = percent_text.get_rect(center=(self.LARGURA//2, progress_y + progress_height//2))
+        self.JANELA.blit(percent_text, percent_rect)
         
         # Instrucciones
         instructions = font_small.render("Presiona ESC para cancelar | F3 para debug", True, (150, 150, 200))
@@ -627,7 +754,7 @@ class MultiplayerGame:
         pygame.display.update()
     
     def draw_hud(self):
-        """Dibuja la interfaz de usuario"""
+        """Dibuja la interfaz de usuario - MEJORADA"""
         font = pygame.font.Font(None, 36)
         font_small = pygame.font.Font(None, 24)
         
@@ -641,7 +768,8 @@ class MultiplayerGame:
         self.JANELA.blit(remote_life, remote_rect)
         
         # Indicador de jugador
-        player_text = font.render(f"Jugador {'1 (Host)' if self.is_host else '2 (Cliente)'}", True, (255, 255, 0))
+        player_type = "1 (Host)" if self.is_host else "2 (Cliente)"
+        player_text = font.render(f"Jugador {player_type}", True, (255, 255, 0))
         self.JANELA.blit(player_text, (20, 20))
         
         # Indicador de bomba activa
@@ -687,23 +815,43 @@ class MultiplayerGame:
             self.JANELA.blit(powerup_text, text_rect)
     
     def draw_connection_status(self):
-        """Dibuja el estado de la conexión"""
+        """Dibuja el estado de la conexión - MEJORADO"""
         font = pygame.font.Font(None, 28)
         
         if self.network.is_connected():
+            # Estado de conexión
             status = font.render("🟢 Conectado", True, (0, 255, 0))
+            status_rect = status.get_rect(right=self.LARGURA - 20, top=20)
+            self.JANELA.blit(status, status_rect)
+            
+            # Ping aproximado
             time_since = time.time() - self.network.last_heartbeat_received
-            ping = font.render(f"Ping: ~{int(time_since * 500)}ms", True, (200, 200, 200))
+            ping_ms = int(time_since * 500)
+            
+            # Color del ping según calidad
+            if ping_ms < 100:
+                ping_color = (0, 255, 0)
+            elif ping_ms < 300:
+                ping_color = (255, 255, 0)
+            else:
+                ping_color = (255, 100, 0)
+            
+            ping = font.render(f"Ping: ~{ping_ms}ms", True, ping_color)
             ping_rect = ping.get_rect(right=self.LARGURA - 20, top=50)
             self.JANELA.blit(ping, ping_rect)
+            
+            # Estadísticas rápidas
+            stats_text = f"↑{self.network_stats['player_states_sent']} ↓{self.network.stats['messages_received']}"
+            stats = font.render(stats_text, True, (200, 200, 200))
+            stats_rect = stats.get_rect(right=self.LARGURA - 20, top=80)
+            self.JANELA.blit(stats, stats_rect)
         else:
             status = font.render("🔴 Desconectado", True, (255, 0, 0))
-        
-        status_rect = status.get_rect(right=self.LARGURA - 20, top=20)
-        self.JANELA.blit(status, status_rect)
+            status_rect = status.get_rect(right=self.LARGURA - 20, top=20)
+            self.JANELA.blit(status, status_rect)
     
     def run(self):
-        """Bucle principal del juego"""
+        """Bucle principal del juego - MEJORADO"""
         # Bucle principal
         while self.game_running:
             tiempo_actual = pygame.time.get_ticks() - self.tiempo_inicio
@@ -722,11 +870,11 @@ class MultiplayerGame:
                     self.waiting_for_connection = False
                     print("✅ ¡Conexión establecida! Comenzando juego...")
                     # Pequeña pausa para sincronizar
-                    pygame.time.delay(500)
+                    pygame.time.delay(1000)
                     continue
                 
-                # Verificar timeout (30 segundos máximo)
-                if time.time() - self.connection_start_time > 30:
+                # Verificar timeout
+                if time.time() - self.connection_start_time > self.connection_timeout:
                     print("❌ Tiempo de espera agotado para conexión")
                     self.game_running = False
                     break
@@ -739,7 +887,7 @@ class MultiplayerGame:
             # Juego normal - ya conectados
             self.update(tiempo_actual)
             self.render()
-            self.clock.tick(60)
+            self.clock.tick(60)  # 60 FPS máximo
         
         # Pantalla de fin de juego
         if self.network_initialized:
@@ -748,29 +896,62 @@ class MultiplayerGame:
         self.show_game_over()
     
     def show_game_over(self):
-        """Muestra pantalla de fin de juego"""
+        """Muestra pantalla de fin de juego - MEJORADA"""
         font_large = pygame.font.Font(None, 100)
-        font_small = pygame.font.Font(None, 36)
+        font_medium = pygame.font.Font(None, 36)
+        font_small = pygame.font.Font(None, 24)
         
         # Determinar resultado
         if self.waiting_for_connection:
             result_text = "CONEXIÓN FALLIDA"
-            color = (255, 100, 0)
+            result_color = (255, 100, 0)
+            detail_text = "No se pudo establecer conexión"
         elif not self.local_player.is_alive():
             result_text = "¡PERDISTE!"
-            color = (255, 0, 0)
-        else:
+            result_color = (255, 0, 0)
+            detail_text = f"Vidas restantes: 0"
+        elif not self.remote_player.is_alive():
             result_text = "¡GANASTE!"
-            color = (0, 255, 0)
+            result_color = (0, 255, 0)
+            detail_text = f"Vidas enemigo: 0"
+        else:
+            result_text = "JUEGO TERMINADO"
+            result_color = (255, 255, 0)
+            detail_text = "Conexión perdida"
         
-        text = font_large.render(result_text, True, color)
-        instruction = font_small.render("Presiona cualquier tecla para salir", True, (255, 255, 255))
+        # Resultado principal
+        result = font_large.render(result_text, True, result_color)
+        result_rect = result.get_rect(center=(self.LARGURA//2, self.ALTURA//2 - 100))
         
-        text_rect = text.get_rect(center=(self.LARGURA//2, self.ALTURA//2 - 50))
-        instr_rect = instruction.get_rect(center=(self.LARGURA//2, self.ALTURA//2 + 50))
+        # Detalle
+        detail = font_medium.render(detail_text, True, (255, 255, 255))
+        detail_rect = detail.get_rect(center=(self.LARGURA//2, self.ALTURA//2))
         
+        # Estadísticas
+        stats_texts = [
+            f"Tiempo jugado: {(pygame.time.get_ticks() - self.tiempo_inicio) / 1000:.1f}s",
+            f"Mensajes enviados: {self.network_stats['player_states_sent']}",
+            f"Bombas colocadas: {self.network_stats['bombs_sent']}",
+            f"Objetos destruidos: {self.network_stats['objects_synced']}"
+        ]
+        
+        # Instrucción
+        instruction = font_small.render("Presiona cualquier tecla para salir", True, (200, 200, 200))
+        instr_rect = instruction.get_rect(center=(self.LARGURA//2, self.ALTURA - 50))
+        
+        # Dibujar todo
         self.JANELA.fill((0, 0, 0))
-        self.JANELA.blit(text, text_rect)
+        self.JANELA.blit(result, result_rect)
+        self.JANELA.blit(detail, detail_rect)
+        
+        # Dibujar estadísticas
+        y_offset = self.ALTURA//2 + 50
+        for stat_text in stats_texts:
+            stat = font_small.render(stat_text, True, (180, 180, 180))
+            stat_rect = stat.get_rect(center=(self.LARGURA//2, y_offset))
+            self.JANELA.blit(stat, stat_rect)
+            y_offset += 30
+        
         self.JANELA.blit(instruction, instr_rect)
         pygame.display.update()
         
