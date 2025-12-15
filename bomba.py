@@ -4,12 +4,13 @@ import os
 from object import Object
 
 class Bomba:
-    def __init__(self, x, y, tamaño_jogador, duracion=3, tile_size=20, jugador_id=0):
+    def __init__(self, x, y, tamaño_jogador, duracion=3, tile_size=20, jugador_id=0, rango_explosion=1):
         self.x = x
         self.y = y
         self.tamaño_jogador = tamaño_jogador
         self.tile_size = tile_size
         self.duracion = duracion
+        self.rango_explosion = rango_explosion  # Nuevo: rango de la explosión
         self.tiempo_creacion = time.time()
         self.explotada = False
         self.recien_explotada = False
@@ -90,10 +91,20 @@ class Bomba:
                 # Dibujar borde rojo si es sólida para otros
                 pygame.draw.rect(superficie, (255, 0, 0), self.rect, 2)
         else:
-            # Dibujar explosión
-            explosion_color = (255, 100, 0)
-            for rect in self.explosion_tiles:
-                pygame.draw.rect(superficie, explosion_color, rect)
+            # Dibujar explosión con diferentes colores según la distancia
+            for i, rect in enumerate(self.explosion_tiles):
+                # El centro es más brillante
+                if i == 0:  # Centro de la explosión
+                    color = (255, 200, 0)
+                elif i <= 4:  # Primer nivel de expansión
+                    color = (255, 100, 0)
+                else:  # Niveles más lejanos
+                    color = (255, 50, 0)
+                
+                pygame.draw.rect(superficie, color, rect)
+                
+                # Efecto de brillo en los bordes
+                pygame.draw.rect(superficie, (255, 255, 200), rect, 1)
 
     def debe_explotar(self):
         """Verifica se debe explodir"""
@@ -122,7 +133,7 @@ class Bomba:
         ]
         
         for dx, dy, direccion in direcciones:
-            for distancia in range(1, 2):
+            for distancia in range(1, self.rango_explosion + 1):  # Usar rango del jugador
                 explosion_rect = pygame.Rect(
                     self.x + dx * distancia, 
                     self.y + dy * distancia, 
@@ -150,6 +161,8 @@ class Bomba:
                 self.explosion_tiles.append(explosion_rect)
                 
                 if objeto_destrutivel_encontrado:
+                    # Si encontramos un objeto destructible, paramos en esa dirección
+                    # pero incluimos el tile con el objeto
                     break
 
     def explosion_activa(self):

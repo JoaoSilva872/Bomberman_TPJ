@@ -7,6 +7,7 @@ from player import Player
 from object import Object
 from bomba import Bomba
 from network import GameNetwork, MessageType
+from powerup import PowerUpSystem, PowerUpType
 
 class MultiplayerGame:
     def __init__(self, is_host=False, host_ip='127.0.0.1'):
@@ -47,6 +48,9 @@ class MultiplayerGame:
         self.local_bombs = []
         self.remote_bombs = []
         
+        # Sistema de power-ups
+        self.powerup_system = PowerUpSystem(probabilidad_spawn=0.35)
+        
         # Objetos (compartidos)
         self.mapa.crear_obstaculos("level2")
         
@@ -56,6 +60,7 @@ class MultiplayerGame:
         self.clock = pygame.time.Clock()
         self.tiempo_inicio = pygame.time.get_ticks()
         self.bomba_presionada = False
+        self.tecla_r_presionada = False  # Para control remoto
         self.last_network_update = 0
         self.network_update_interval = 0.033
         
@@ -119,6 +124,7 @@ class MultiplayerGame:
     def create_player(self, is_local=True):
         """Crea un jugador local o remoto"""
         player = Player(self.LARGURA, self.ALTURA, self.player_size, self.player_vel)
+        player.id = 1 if (is_local and self.is_host) or (not is_local and not self.is_host) else 2
         
         if not is_local:
             # Crear copia de sprites con tinte azul para jugador remoto
@@ -148,6 +154,12 @@ class MultiplayerGame:
                 if event.key == pygame.K_SPACE and not self.bomba_presionada:
                     self.place_bomb()
                 
+                # Control remoto - detonar bombas
+                if event.key == pygame.K_r and not self.tecla_r_presionada:
+                    if self.local_player.tiene_control_remoto:
+                        self.detonar_bombas_remotamente()
+                        self.tecla_r_presionada = True
+                
                 # Testing (solo local)
                 if event.key == pygame.K_k:
                     self.local_player.take_damage(1)
@@ -167,6 +179,19 @@ class MultiplayerGame:
                     print(f"Errores: {self.network.stats['connection_errors']}")
                     print(f"Peer Address: {self.network.peer_address}")
                     
+                # Debug: mostrar info de power-ups
+                if event.key == pygame.K_p:
+                    print("=== POWER-UPS INFO ===")
+                    print(f"Jugador Local:")
+                    print(f"  Max bombas: {self.local_player.max_bombas}")
+                    print(f"  Rango explosión: {self.local_player.rango_explosion}")
+                    print(f"  Velocidad boost: {self.local_player.velocidad_boost:.1f}")
+                    print(f"  Escudo activo: {self.local_player.tiene_escudo}")
+                    print(f"  Control remoto: {self.local_player.tiene_control_remoto}")
+                    print(f"Jugador Remoto:")
+                    print(f"  Max bombas: {self.remote_player.max_bombas}")
+                    print(f"  Rango explosión: {self.remote_player.rango_explosion}")
+                    
                 # Salir durante espera
                 if event.key == pygame.K_ESCAPE:
                     if self.waiting_for_connection:
@@ -177,6 +202,8 @@ class MultiplayerGame:
             if event.type == pygame.KEYUP:
                 if event.key == pygame.K_SPACE:
                     self.bomba_presionada = False
+                if event.key == pygame.K_r:
+                    self.tecla_r_presionada = False
         
         return True
     
@@ -202,7 +229,9 @@ class MultiplayerGame:
         
         if not bomba_existente:
             # Crear la bomba localmente
-            nueva_bomba = Bomba(grid_x, grid_y, self.player_size, jugador_id=self.player_id)
+            nueva_bomba = Bomba(grid_x, grid_y, self.player_size, 
+                              jugador_id=self.player_id,
+                              rango_explosion=self.local_player.rango_explosion)
             nueva_bomba.es_remota = False  # Es bomba local
             self.local_bombs.append(nueva_bomba)
             
@@ -214,15 +243,31 @@ class MultiplayerGame:
                 'x': grid_x,
                 'y': grid_y,
                 'player_id': self.player_id,
-                'time': nueva_bomba.tiempo_creacion
+                'time': nueva_bomba.tiempo_creacion,
+                'rango_explosion': nueva_bomba.rango_explosion
             }
             
             if self.network.send_bomb_placed(bomb_data):
-                print(f"💣 Bomba colocada en ({grid_x}, {grid_y})")
+                print(f"💣 Bomba colocada en ({grid_x}, {grid_y}) - Rango: {nueva_bomba.rango_explosion}")
             else:
                 print("⚠️ Error enviando bomba a la red")
             
             self.bomba_presionada = True
+    
+    def detonar_bombas_remotamente(self):
+        """Detona todas las bombas del jugador remotamente"""
+        print("🎮 Activando control remoto...")
+        bombas_detonadas = 0
+        
+        for bomba in self.local_bombs:
+            if not bomba.explotada:
+                bomba.explotar(Object.objects)
+                bombas_detonadas += 1
+        
+        if bombas_detonadas > 0:
+            print(f"💥 ¡{bombas_detonadas} bombas detonadas remotamente!")
+        else:
+            print("⚠️ No hay bombas para detonar")
     
     def ajustar_a_grid(self, x, y):
         """Ajusta las coordenadas a la cuadrícula"""
@@ -250,19 +295,36 @@ class MultiplayerGame:
                 bomba.actualizar_colision(self.local_player.x, self.local_player.y, 
                                          self.player_id, self.player_size)
         
-        # 4. Actualizar animación local
+        # 4. Verificar colisiones con power-ups
+        jugador_rect = pygame.Rect(self.local_player.x, self.local_player.y, 
+                                 self.player_size, self.player_size)
+        powerups_recogidos = self.powerup_system.verificar_colisiones(jugador_rect, self.local_player)
+        
+        # Aplicar power-ups recogidos y sincronizar
+        for tipo_powerup in powerups_recogidos:
+            self.local_player.aplicar_powerup(tipo_powerup)
+            # Enviar a red
+            powerup_data = {
+                'x': int(jugador_rect.x),  # Asegurar que son ints
+                'y': int(jugador_rect.y),
+                'type': tipo_powerup.value,
+                'player_id': self.player_id
+            }
+            self.network.send_powerup_collected(powerup_data)
+        
+        # 5. Actualizar animación local
         self.local_player.actualizar_animacion(tiempo_actual, pygame.key.get_pressed())
         
-        # 5. Actualizar bombas
+        # 6. Actualizar bombas
         self.update_bombs()
         
-        # 6. Enviar estado del jugador
+        # 7. Enviar estado del jugador
         current_time = time.time()
         if current_time - self.last_network_update >= self.network_update_interval:
             self.send_player_state()
             self.last_network_update = current_time
         
-        # 7. Verificar fin del juego
+        # 8. Verificar fin del juego
         if not self.local_player.is_alive():
             self.game_running = False
             print("💀 ¡Has perdido!")
@@ -331,12 +393,29 @@ class MultiplayerGame:
                         obj.destruido = True
                         destroyed_objects.append((obj.rect.x, obj.rect.y))
                         print(f"💥 {'[LOCAL]' if is_local else '[REMOTO]'} Objeto destruido en ({obj.rect.x}, {obj.rect.y})")
+                        
+                        # Intentar spawnear power-up (solo si es bomba local)
+                        if is_local:
+                            powerup = self.powerup_system.intentar_spawn(
+                                obj.rect.x, obj.rect.y, 
+                                self.player_size
+                            )
+                            
+                            # Si se spawnear un power-up, sincronizar
+                            if powerup:
+                                powerup_data = {
+                                    'x': int(obj.rect.x),
+                                    'y': int(obj.rect.y),
+                                    'type': powerup.tipo.value
+                                }
+                                if self.network.send_powerup_spawned(powerup_data):
+                                    print(f"📤 [SYNC] Enviando power-up en ({obj.rect.x}, {obj.rect.y})")
                         break
         
         # Sincronizar objetos destruidos (solo si es bomba local)
         if is_local:
             for x, y in destroyed_objects:
-                object_data = {'x': x, 'y': y}
+                object_data = {'x': int(x), 'y': int(y)}
                 if self.network.send_object_destroyed(object_data):
                     print(f"📤 [SYNC] Enviando destrucción de objeto en ({x}, {y})")
     
@@ -346,9 +425,9 @@ class MultiplayerGame:
         
         for rect in bomba.explosion_tiles:
             if player_rect.colliderect(rect):
-                player.take_damage(1)
+                if player.take_damage(1):
+                    print(f"🔥 Jugador {player.id} golpeado! Vida: {player.life}")
                 bomba.causou_dano = True
-                print(f"🔥 Jugador golpeado! Vida: {player.life}")
                 break
     
     def send_player_state(self):
@@ -361,6 +440,7 @@ class MultiplayerGame:
                 'frame': self.local_player.frame_actual,
                 'life': self.local_player.life,
                 'moving': self.local_player.esta_moviendose,
+                'powerup_state': self.local_player.get_estado_powerups(),
                 'timestamp': time.time()
             }
             self.network.send_player_state(player_data)
@@ -381,6 +461,10 @@ class MultiplayerGame:
                 self.remote_player.frame_actual = data['frame']
                 self.remote_player.life = data['life']
                 self.remote_player.esta_moviendose = data['moving']
+                
+                # Actualizar power-ups del jugador remoto
+                if 'powerup_state' in data:
+                    self.remote_player.set_estado_powerups(data['powerup_state'])
             
             elif msg_type == MessageType.BOMB_PLACED.value:
                 # Solo procesar si no es nuestra bomba
@@ -393,18 +477,41 @@ class MultiplayerGame:
                             break
                     
                     if not bomba_existente:
-                        bomba = Bomba(data['x'], data['y'], self.player_size, jugador_id=data['player_id'])
+                        rango = data.get('rango_explosion', 1)
+                        bomba = Bomba(data['x'], data['y'], self.player_size, 
+                                     jugador_id=data['player_id'],
+                                     rango_explosion=rango)
                         bomba.tiempo_creacion = data.get('time', time.time())
                         bomba.es_remota = True  # Marcar como bomba remota
                         # Para bombas remotas, son sólidas desde el principio para el jugador local
                         bomba.es_solida_para_otros = True
                         self.remote_bombs.append(bomba)
-                        print(f"💣 Bomba remota recibida en ({data['x']}, {data['y']}) - ID: {data['player_id']}")
+                        print(f"💣 Bomba remota recibida en ({data['x']}, {data['y']}) - ID: {data['player_id']} - Rango: {rango}")
             
             elif msg_type == MessageType.OBJECT_DESTROYED.value:
                 # Sincronizar objeto destruido
                 x, y = data['x'], data['y']
                 self.sync_object_destruction(x, y)
+            
+            elif msg_type == MessageType.POWERUP_SPAWNED.value:
+                # Spawnear power-up remoto
+                try:
+                    tipo_powerup = PowerUpType(data['type'])
+                    powerup = self.powerup_system.spawn_powerup(
+                        data['x'], data['y'], 
+                        tipo_powerup, 
+                        self.player_size
+                    )
+                    print(f"✨ Power-up '{powerup.nombre}' remoto apareció en ({data['x']}, {data['y']})")
+                except:
+                    print(f"⚠️ Error al spawnear power-up remoto en ({data['x']}, {data['y']})")
+            
+            elif msg_type == MessageType.POWERUP_COLLECTED.value:
+                # Remover power-up recogido por el otro jugador
+                powerup = self.powerup_system.get_powerup_at(data['x'], data['y'])
+                if powerup:
+                    powerup.recoger()
+                    print(f"🎯 Jugador remoto recogió power-up en ({data['x']}, {data['y']})")
             
             elif msg_type == MessageType.GAME_OVER.value:
                 print("⚠️ El otro jugador se desconectó")
@@ -481,24 +588,27 @@ class MultiplayerGame:
             if not obj.destruido:
                 obj.draw(self.JANELA)
         
-        # 3. Dibujar bombas remotas
+        # 3. Dibujar power-ups
+        self.powerup_system.dibujar_todos(self.JANELA)
+        
+        # 4. Dibujar bombas remotas
         for bomba in self.remote_bombs:
             bomba.dibujar(self.JANELA)
         
-        # 4. Dibujar bombas locales
+        # 5. Dibujar bombas locales
         for bomba in self.local_bombs:
             bomba.dibujar(self.JANELA)
         
-        # 5. Dibujar jugador remoto
+        # 6. Dibujar jugador remoto
         self.remote_player.dibujar(self.JANELA, pygame.time.get_ticks() - self.tiempo_inicio)
         
-        # 6. Dibujar jugador local (encima)
+        # 7. Dibujar jugador local (encima)
         self.local_player.dibujar(self.JANELA, pygame.time.get_ticks() - self.tiempo_inicio)
         
-        # 7. Dibujar HUD
+        # 8. Dibujar HUD
         self.draw_hud()
         
-        # 8. Dibujar estado de conexión
+        # 9. Dibujar estado de conexión
         self.draw_connection_status()
         
         pygame.display.update()
@@ -506,6 +616,7 @@ class MultiplayerGame:
     def draw_hud(self):
         """Dibuja la interfaz de usuario"""
         font = pygame.font.Font(None, 36)
+        font_small = pygame.font.Font(None, 24)
         
         # Vida del jugador local
         local_life = font.render(f"Tus Vidas: {self.local_player.life}", True, (255, 255, 255))
@@ -524,6 +635,43 @@ class MultiplayerGame:
         if self.local_player.bomba_colocada:
             bomba_text = font.render("¡Bomba activa!", True, (255, 255, 0))
             self.JANELA.blit(bomba_text, (20, 60))
+        
+        # Power-ups del jugador local (izquierda)
+        y_offset = 100
+        powerup_texts = [
+            f"Bombas: {self.local_player.bombas_colocadas_actual}/{self.local_player.max_bombas}",
+            f"Rango: {self.local_player.rango_explosion}",
+            f"Vel: x{self.local_player.velocidad_boost:.1f}"
+        ]
+        
+        for i, text in enumerate(powerup_texts):
+            powerup_text = font_small.render(text, True, (200, 200, 200))
+            self.JANELA.blit(powerup_text, (20, y_offset + i * 25))
+        
+        # Power-ups especiales activos
+        y_offset += 80
+        if self.local_player.tiene_escudo:
+            escudo_text = font_small.render("🛡️ ESCUDO ACTIVO", True, (100, 180, 255))
+            self.JANELA.blit(escudo_text, (20, y_offset))
+            y_offset += 25
+        
+        if self.local_player.tiene_control_remoto:
+            control_text = font_small.render("🎮 CTRL REMOTO (R)", True, (180, 50, 230))
+            self.JANELA.blit(control_text, (20, y_offset))
+            y_offset += 25
+        
+        # Power-ups del jugador remoto (derecha)
+        y_offset_right = 100
+        remote_powerup_texts = [
+            f"Bombas: ?/{self.remote_player.max_bombas}",
+            f"Rango: {self.remote_player.rango_explosion}",
+            f"Vel: x{self.remote_player.velocidad_boost:.1f}"
+        ]
+        
+        for i, text in enumerate(remote_powerup_texts):
+            powerup_text = font_small.render(text, True, (200, 200, 255))
+            text_rect = powerup_text.get_rect(right=self.LARGURA - 20, top=y_offset_right + i * 25)
+            self.JANELA.blit(powerup_text, text_rect)
     
     def draw_connection_status(self):
         """Dibuja el estado de la conexión"""

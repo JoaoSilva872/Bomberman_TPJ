@@ -4,6 +4,8 @@ import time
 from map import Map
 from player import Player
 from object import Object
+from bomba import Bomba
+from powerup import PowerUpSystem, PowerUpType
 
 class Game:
     def __init__(self):
@@ -30,6 +32,9 @@ class Game:
         self.jugador.life = 3
         self.bombas = []
         
+        # Sistema de power-ups
+        self.powerup_system = PowerUpSystem(probabilidad_spawn=0.35)
+        
         # Crear obstáculos através do mapa (maze_21x11)
         self.mapa.crear_obstaculos("level2")
         
@@ -41,6 +46,7 @@ class Game:
         
         # Control de teclas
         self.bomba_presionada = False
+        self.tecla_r_presionada = False  # Para control remoto
 
     def ajustar_a_grid(self, x, y):
         """Ajusta las coordenadas a la cuadrícula de 3x3"""
@@ -71,17 +77,24 @@ class Game:
                             break
                     
                     if not bomba_en_posicion:
-                        from bomba import Bomba
                         # Ajustar posición a la cuadrícula de 3x3
-                        nueva_bomba = Bomba(grid_x, grid_y, self.player_size, jugador_id=self.jugador.id)
+                        nueva_bomba = Bomba(grid_x, grid_y, self.player_size, 
+                                          jugador_id=self.jugador.id,
+                                          rango_explosion=self.jugador.rango_explosion)
                         self.bombas.append(nueva_bomba)
                         self.jugador.colocar_bomba(nueva_bomba)
                         self.bomba_presionada = True
-                        print(f"💣 Bomba colocada en ({grid_x}, {grid_y})")
+                        print(f"💣 Bomba colocada en ({grid_x}, {grid_y}) - Rango: {self.jugador.rango_explosion}")
                     else:
                         print("Ya hay una bomba en esta posición")
+                
+                # Control remoto - detonar bombas
+                if event.key == pygame.K_r and not self.tecla_r_presionada:
+                    if self.jugador.tiene_control_remoto:
+                        self.detonar_bombas_remotamente()
+                        self.tecla_r_presionada = True
 
-                #Testing Life system ========================================================
+                # Testing Life system ========================================================
                 if event.key == pygame.K_k:
                     self.jugador.take_damage(1)
                     print(f"Player take damage! Life: {self.jugador.life}/{self.jugador.life_max}")
@@ -90,11 +103,38 @@ class Game:
                     self.jugador.heal(self.jugador.life_max)
                     print(f"Player heald! Life: {self.jugador.life}/{self.jugador.life_max}")
                     
+                # Debug: mostrar info de power-ups
+                if event.key == pygame.K_p:
+                    print("=== POWER-UPS INFO ===")
+                    print(f"Max bombas: {self.jugador.max_bombas}")
+                    print(f"Rango explosión: {self.jugador.rango_explosion}")
+                    print(f"Velocidad boost: {self.jugador.velocidad_boost:.1f}")
+                    print(f"Escudo activo: {self.jugador.tiene_escudo}")
+                    print(f"Control remoto: {self.jugador.tiene_control_remoto}")
+                    print(f"Bombas colocadas: {self.jugador.bombas_colocadas_actual}/{self.jugador.max_bombas}")
+                    
             if event.type == pygame.KEYUP:
                 if event.key == pygame.K_SPACE:
                     self.bomba_presionada = False
+                if event.key == pygame.K_r:
+                    self.tecla_r_presionada = False
         
         return True
+    
+    def detonar_bombas_remotamente(self):
+        """Detona todas las bombas del jugador remotamente"""
+        print("🎮 Activando control remoto...")
+        bombas_detonadas = 0
+        
+        for bomba in self.bombas:
+            if not bomba.explotada and bomba.jugador_id == self.jugador.id:
+                bomba.explotar(Object.objects)
+                bombas_detonadas += 1
+        
+        if bombas_detonadas > 0:
+            print(f"💥 ¡{bombas_detonadas} bombas detonadas remotamente!")
+        else:
+            print("⚠️ No hay bombas para detonar")
     
     def draw_lives(self):
         """Desenha a vida do jogador na tela"""
@@ -102,6 +142,34 @@ class Game:
         text = font.render(f"Player Lives: {self.jugador.life}x", True, (255, 255, 255))
         text_rect = text.get_rect(center=(self.LARGURA // 2, self.ALTURA - 30))
         self.JANELA.blit(text, text_rect)
+        
+        # Dibujar info de power-ups
+        font_small = pygame.font.Font(None, 24)
+        
+        # Bombas
+        bombas_text = font_small.render(f"Bombas: {self.jugador.bombas_colocadas_actual}/{self.jugador.max_bombas}", 
+                                       True, (255, 200, 100))
+        self.JANELA.blit(bombas_text, (10, 10))
+        
+        # Rango
+        rango_text = font_small.render(f"Rango: {self.jugador.rango_explosion}", 
+                                      True, (255, 150, 50))
+        self.JANELA.blit(rango_text, (10, 35))
+        
+        # Velocidad
+        velocidad_text = font_small.render(f"Vel: x{self.jugador.velocidad_boost:.1f}", 
+                                         True, (100, 255, 100))
+        self.JANELA.blit(velocidad_text, (10, 60))
+        
+        # Escudo
+        if self.jugador.tiene_escudo:
+            escudo_text = font_small.render("ESCUDO", True, (100, 180, 255))
+            self.JANELA.blit(escudo_text, (10, 85))
+        
+        # Control remoto
+        if self.jugador.tiene_control_remoto:
+            control_text = font_small.render("CTRL REMOTO (R)", True, (180, 50, 230))
+            self.JANELA.blit(control_text, (10, 110))
 
     def update(self, tiempo_actual):
         """Actualiza el estado del juego"""
@@ -116,12 +184,21 @@ class Game:
         keys = pygame.key.get_pressed()
         self.jugador.actualizar_animacion(tiempo_actual, keys)
         
-        # ACTUALIZAR COLISIÓN DE BOMBAS - IMPORTANTE
+        # Actualizar estado de colisión de las bombas
         for bomba in self.bombas:
             bomba.actualizar_colision(self.jugador.x, self.jugador.y, self.jugador.id, self.player_size)
         
         # Actualizar bombas (explosiones, etc.)
         self.actualizar_bombas()
+        
+        # Verificar colisiones con power-ups
+        jugador_rect = pygame.Rect(self.jugador.x, self.jugador.y, 
+                                 self.player_size, self.player_size)
+        powerups_recogidos = self.powerup_system.verificar_colisiones(jugador_rect, self.jugador)
+        
+        # Aplicar power-ups recogidos
+        for tipo_powerup in powerups_recogidos:
+            self.jugador.aplicar_powerup(tipo_powerup)
         
         # Atualizar objetos destrutíveis
         Object.atualizar_objetos_destrutiveis(self.bombas)
@@ -134,6 +211,10 @@ class Game:
             if bomba.debe_explotar():
                 bomba.explotar(Object.objects)
                 bomba.causou_dano = False
+            
+            if bomba.recien_explotada:
+                bomba.recien_explotada = False
+                self.procesar_explosion_destruccion(bomba)
 
             if bomba.explosion_activa():
                 player_rect = pygame.Rect(self.jugador.x, self.jugador.y,
@@ -154,6 +235,27 @@ class Game:
 
         for bomba in bombas_a_remover:
             self.bombas.remove(bomba)
+    
+    def procesar_explosion_destruccion(self, bomba):
+        """Procesa la destrucción de objetos por una explosión"""
+        objetos_destruidos = []
+        
+        for obj in Object.objects:
+            if obj.destrutivel and not obj.destruido:
+                for rect in bomba.explosion_tiles:
+                    if obj.rect.colliderect(rect):
+                        obj.destruido = True
+                        objetos_destruidos.append(obj)
+                        print(f"💥 Objeto destruido en ({obj.rect.x}, {obj.rect.y})")
+                        
+                        # Intentar spawnear power-up
+                        self.powerup_system.intentar_spawn(
+                            obj.rect.x, obj.rect.y, 
+                            self.player_size
+                        )
+                        break
+        
+        return objetos_destruidos
 
     def render(self):
         """Renderiza todos los elementos del juego"""
@@ -165,17 +267,20 @@ class Game:
             if not obj.destruido:
                 obj.draw(self.JANELA)
         
-        # 3. Dibujar bombas e EXPLOSÕES
+        # 3. Dibujar power-ups
+        self.powerup_system.dibujar_todos(self.JANELA)
+        
+        # 4. Dibujar bombas e EXPLOSÕES
         for bomba in self.bombas:
             bomba.dibujar(self.JANELA)
         
-        # 4. Dibujar jugador (por cima de tudo)
+        # 5. Dibujar jugador (por cima de tudo)
         self.jugador.dibujar(self.JANELA, pygame.time.get_ticks() - self.tiempo_inicio)
         
-        # 5. Desenhar vidas (UI)
+        # 6. Desenhar vidas (UI)
         self.draw_lives()
         
-        # 6. Dibujar indicador de bomba activa
+        # 7. Dibujar indicador de bomba activa
         if self.jugador.bomba_colocada:
             font = pygame.font.Font(None, 24)
             text = font.render("¡Bomba activa! (Espera a que explote)", True, (255, 255, 0))

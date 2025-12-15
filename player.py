@@ -2,6 +2,7 @@ import pygame
 import os
 import time
 from object import Object
+from powerup import PowerUpType
 
 class Player:
     def __init__(self, ancho_ventana, alto_ventana, tamaño, velocidad, id=0):
@@ -22,6 +23,24 @@ class Player:
         self.ultima_bomba_tiempo = 0
         self.bomba_actual = None
         
+        # POWER-UPS ===========================================================
+        self.max_bombas = 1  # Límite inicial de bombas
+        self.bombas_colocadas_actual = 0  # Contador actual
+        self.rango_explosion = 1  # Rango inicial (1 bloque)
+        self.velocidad_base = velocidad
+        self.velocidad_boost = 1.0  # Multiplicador de velocidad
+        
+        # Power-ups temporales
+        self.tiene_escudo = False
+        self.tiene_invencibilidad = False
+        self.tiene_control_remoto = False
+        
+        # Timers para power-ups temporales (en segundos)
+        self.escudo_tiempo = 0
+        self.invencibilidad_tiempo = 0
+        
+        # =====================================================================
+        
         # Animación
         self.direccion_actual = 'down'
         self.frame_actual = 0
@@ -36,9 +55,19 @@ class Player:
 
     def take_damage(self, number):
         """Reduce Life."""
+        if self.tiene_escudo:
+            print(f"🛡️ Jugador {self.id}: ¡Escudo bloqueó el daño!")
+            return False  # No recibió daño
+        
+        if self.tiene_invencibilidad:
+            print(f"⚡ Jugador {self.id}: ¡Invencible!")
+            return False  # No recibió daño
+            
         self.life -= number
         if self.life < 0:
             self.life = 0
+        print(f"💔 Jugador {self.id} recibió daño! Vida: {self.life}/{self.life_max}")
+        return True  # Recibió daño
             
     def heal(self, number):
         """Restores life"""
@@ -54,20 +83,86 @@ class Player:
     
     def puede_colocar_bomba(self):
         """Verifica si el jugador puede colocar una bomba"""
-        return not self.bomba_colocada
+        return self.bombas_colocadas_actual < self.max_bombas
     
     def colocar_bomba(self, bomba=None):
         """Marca que el jugador ha colocado una bomba"""
         self.bomba_colocada = True
         self.ultima_bomba_tiempo = time.time()
         self.bomba_actual = bomba
+        self.bombas_colocadas_actual += 1
     
     def bomba_destruida(self):
         """Marca que la bomba del jugador ha sido destruida"""
         self.bomba_colocada = False
         self.bomba_actual = None
+        self.bombas_colocadas_actual = max(0, self.bombas_colocadas_actual - 1)
     
-    # =========================================================================================
+    # POWER-UPS SYSTEM ================================================================
+    
+    def aplicar_powerup(self, tipo_powerup):
+        """Aplica un power-up al jugador"""
+        if tipo_powerup == PowerUpType.MORE_BOMBS:
+            self.max_bombas += 1
+            print(f"🎯 Jugador {self.id}: ¡Puedes colocar {self.max_bombas} bombas!")
+            
+        elif tipo_powerup == PowerUpType.FIRE_UP:
+            self.rango_explosion += 1
+            print(f"🔥 Jugador {self.id}: ¡Rango de explosión aumentado a {self.rango_explosion}!")
+            
+        elif tipo_powerup == PowerUpType.SPEED_UP:
+            self.velocidad_boost = min(2.0, self.velocidad_boost + 0.3)
+            nueva_velocidad = int(self.velocidad_base * self.velocidad_boost)
+            self.velocidad = nueva_velocidad
+            print(f"⚡ Jugador {self.id}: ¡Velocidad aumentada! (x{self.velocidad_boost:.1f})")
+            
+        elif tipo_powerup == PowerUpType.SHIELD:
+            self.tiene_escudo = True
+            self.escudo_tiempo = time.time() + 10  # 10 segundos
+            print(f"🛡️ Jugador {self.id}: ¡Escudo activado por 10 segundos!")
+            
+        elif tipo_powerup == PowerUpType.REMOTE_CONTROL:
+            self.tiene_control_remoto = True
+            print(f"🎮 Jugador {self.id}: ¡Control remoto activado!")
+    
+    def actualizar_powerups(self):
+        """Actualiza los power-ups temporales"""
+        tiempo_actual = time.time()
+        
+        # Escudo
+        if self.tiene_escudo and tiempo_actual > self.escudo_tiempo:
+            self.tiene_escudo = False
+            print(f"🛡️ Jugador {self.id}: Escudo desactivado")
+        
+        # Invencibilidad
+        if self.tiene_invencibilidad and tiempo_actual > self.invencibilidad_tiempo:
+            self.tiene_invencibilidad = False
+            print(f"⚡ Jugador {self.id}: Invencibilidad desactivada")
+    
+    def get_estado_powerups(self):
+        """Obtiene el estado actual de los power-ups para la red"""
+        return {
+            'max_bombas': self.max_bombas,
+            'rango_explosion': self.rango_explosion,
+            'velocidad_boost': self.velocidad_boost,
+            'tiene_escudo': self.tiene_escudo,
+            'tiene_control_remoto': self.tiene_control_remoto,
+            'escudo_tiempo': self.escudo_tiempo
+        }
+    
+    def set_estado_powerups(self, estado):
+        """Establece el estado de power-ups desde la red"""
+        self.max_bombas = estado.get('max_bombas', self.max_bombas)
+        self.rango_explosion = estado.get('rango_explosion', self.rango_explosion)
+        self.velocidad_boost = estado.get('velocidad_boost', self.velocidad_boost)
+        self.tiene_escudo = estado.get('tiene_escudo', False)
+        self.tiene_control_remoto = estado.get('tiene_control_remoto', False)
+        self.escudo_tiempo = estado.get('escudo_tiempo', 0)
+        
+        # Actualizar velocidad
+        self.velocidad = int(self.velocidad_base * self.velocidad_boost)
+    
+    # ====================================================================================
 
     def cargar_sprites(self):
         """Carga los sprites del jugador usando tus rutas originales"""
@@ -160,6 +255,9 @@ class Player:
         # Limites de la ventana
         self.x = max(0, min(self.x, ancho_ventana - self.tamaño))
         self.y = max(0, min(self.y, alto_ventana - self.tamaño))
+        
+        # Actualizar power-ups temporales
+        self.actualizar_powerups()
 
     def actualizar_animacion(self, tiempo_actual, keys):
         """Actualiza la animación del jugador"""
@@ -183,7 +281,23 @@ class Player:
         
         try:
             sprite_actual = self.sprites[self.direccion_actual][self.frame_actual]
+            
+            # Si tiene escudo, dibujar un efecto de escudo
+            if self.tiene_escudo:
+                escudo_surf = pygame.Surface((self.tamaño, self.tamaño), pygame.SRCALPHA)
+                pygame.draw.circle(escudo_surf, (100, 180, 255, 100), 
+                                 (self.tamaño//2, self.tamaño//2), self.tamaño//2 - 2)
+                superficie.blit(escudo_surf, (self.x, self.y))
+            
+            # Si tiene invencibilidad, efecto de parpadeo
+            if self.tiene_invencibilidad and (tiempo_actual // 200) % 2 == 0:
+                inv_surf = pygame.Surface((self.tamaño, self.tamaño), pygame.SRCALPHA)
+                pygame.draw.circle(inv_surf, (255, 255, 100, 150), 
+                                 (self.tamaño//2, self.tamaño//2), self.tamaño//2)
+                superficie.blit(inv_surf, (self.x, self.y))
+            
             superficie.blit(sprite_actual, (self.x, self.y))
+            
         except IndexError:
             sprite_actual = self.sprites[self.direccion_actual][0]
             superficie.blit(sprite_actual, (self.x, self.y))

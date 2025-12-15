@@ -18,7 +18,8 @@ class MessageType(Enum):
     HEARTBEAT = 9
     POWERUP_SPAWNED = 10
     POWERUP_COLLECTED = 11
-    CONNECTION_CHECK = 12
+    PLAYER_POWERUP_STATE = 12
+    CONNECTION_CHECK = 13
 
 class GameNetwork:
     """Sistema de red para el juego Bomberman usando UDP"""
@@ -39,14 +40,15 @@ class GameNetwork:
         
         # Para heartbeat - con mejor tolerancia
         self.last_heartbeat_received = time.time()
-        self.heartbeat_interval = 0.5
-        self.heartbeat_timeout = 3.0
+        self.heartbeat_interval = 1.0  # Aumentado para LAN
+        self.heartbeat_timeout = 5.0   # Aumentado para LAN
         
         # Estado del juego compartido
         self.game_state = {
             'players': {},
             'bombs': [],
             'objects': [],
+            'powerups': [],
             'time': 0
         }
         
@@ -58,81 +60,124 @@ class GameNetwork:
             'last_debug_time': time.time()
         }
         
+        # Hilos
+        self.listen_thread = None
+        self.receive_thread = None
+        self.heartbeat_thread = None
+        
     def initialize(self):
-        """Inicializa la conexión de red"""
+        """Inicializa la conexión de red - MEJORADO PARA LAN"""
         try:
-            # Crear socket UDP con timeout
+            # Crear socket UDP
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.socket.settimeout(0.1)
+            
+            # Configuraciones importantes para LAN
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            self.socket.settimeout(0.5)  # Timeout más largo
             
             if self.is_host:
-                # Host: bind al puerto
+                # Host: bind a todas las interfaces
                 self.socket.bind(('0.0.0.0', self.port))
                 print(f"🎮 Host iniciado en puerto {self.port}")
+                print(f"📡 Escuchando en todas las interfaces...")
+                
+                # Obtener y mostrar IP local
+                try:
+                    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    s.connect(("8.8.8.8", 80))
+                    local_ip = s.getsockname()[0]
+                    s.close()
+                    print(f"📍 Tu IP local es: {local_ip}")
+                except:
+                    print("⚠️ No se pudo obtener la IP local")
                 
                 # Hilo para escuchar conexiones
-                listen_thread = threading.Thread(target=self._listen_for_connections)
-                listen_thread.daemon = True
-                listen_thread.start()
+                self.listen_thread = threading.Thread(target=self._listen_for_connections)
+                self.listen_thread.daemon = True
+                self.listen_thread.start()
             else:
-                # Cliente: conectar al host
+                # Cliente: intentar varias conexiones
                 self.peer_address = (self.host_ip, self.port)
+                print(f"🔗 Intentando conectar a {self.host_ip}:{self.port}...")
                 
-                # Enviar solicitud de conexión con reintentos
+                # Enviar solicitud de conexión con más intentos
                 self._send_connection_request()
                 
-                print(f"🔗 Conectando a {self.host_ip}:{self.port}...")
-                
             # Hilo para recibir mensajes
-            receive_thread = threading.Thread(target=self._receive_messages)
-            receive_thread.daemon = True
-            receive_thread.start()
+            self.receive_thread = threading.Thread(target=self._receive_messages)
+            self.receive_thread.daemon = True
+            self.receive_thread.start()
             
             # Hilo para heartbeat
-            heartbeat_thread = threading.Thread(target=self._heartbeat_loop)
-            heartbeat_thread.daemon = True
-            heartbeat_thread.start()
+            self.heartbeat_thread = threading.Thread(target=self._heartbeat_loop)
+            self.heartbeat_thread.daemon = True
+            self.heartbeat_thread.start()
             
             return True
             
         except Exception as e:
             print(f"❌ Error inicializando red: {e}")
+            print(f"💡 Asegúrate de que el puerto {self.port} esté libre")
             return False
     
     def _send_connection_request(self):
-        """Envía solicitud de conexión con reintentos"""
-        for attempt in range(3):
+        """Envía solicitud de conexión con más intentos y mejor logging"""
+        max_attempts = 5  # Más intentos
+        print(f"🔗 Enviando solicitud de conexión ({max_attempts} intentos)...")
+        
+        for attempt in range(max_attempts):
             try:
                 connection_msg = {
                     'type': MessageType.CONNECTION_REQUEST.value,
                     'player_id': id(self),
                     'timestamp': time.time(),
-                    'attempt': attempt
+                    'attempt': attempt,
+                    'version': '1.0'
                 }
-                self._send_message(connection_msg, self.peer_address)
-                print(f"📤 Intento {attempt + 1}/3 de conexión...")
                 
-                # Pequeña pausa entre intentos
-                time.sleep(0.3)
+                print(f"📤 Intento {attempt + 1}/{max_attempts} a {self.peer_address}...")
                 
+                if self._send_message(connection_msg, self.peer_address):
+                    print(f"  ✅ Mensaje enviado")
+                else:
+                    print(f"  ❌ Error enviando mensaje")
+                
+                # Esperar respuesta
+                time.sleep(1.0)  # Más tiempo entre intentos
+                
+                # Si ya estamos conectados, salir
+                if self.connection_established:
+                    print(f"✅ ¡Conexión establecida después de {attempt + 1} intentos!")
+                    return
+                    
             except Exception as e:
                 print(f"⚠️ Error en intento {attempt + 1}: {e}")
+        
+        print(f"❌ No se pudo conectar después de {max_attempts} intentos")
     
     def _listen_for_connections(self):
-        """Escucha solicitudes de conexión (solo host) - SOLO UNA CONEXIÓN"""
+        """Escucha solicitudes de conexión - MEJORADO"""
+        print("👂 Escuchando conexiones entrantes...")
+        
         try:
             while self.running and not self.connection_established:
                 try:
                     data, addr = self.socket.recvfrom(4096)
+                    print(f"📨 Datos recibidos de {addr}")
                     
                     try:
                         message = pickle.loads(data)
-                    except:
+                        print(f"  📝 Tipo de mensaje: {message.get('type')}")
+                    except Exception as e:
+                        print(f"  ❌ Error deserializando: {e}")
                         continue
                         
                     if message['type'] == MessageType.CONNECTION_REQUEST.value:
-                        print(f"📨 Solicitud de conexión de {addr}")
+                        print(f"🤝 Solicitud de conexión de {addr}")
+                        print(f"  📊 Versión: {message.get('version', 'desconocida')}")
+                        print(f"  🆔 ID: {message.get('player_id', 'desconocido')}")
+                        
                         self.peer_address = addr
                         
                         # Enviar aceptación
@@ -140,9 +185,14 @@ class GameNetwork:
                             'type': MessageType.CONNECTION_ACCEPTED.value,
                             'player_id': 2,
                             'timestamp': time.time(),
-                            'message': "Conexión aceptada"
+                            'message': "Conexión aceptada",
+                            'version': '1.0'
                         }
-                        self._send_message(response, addr)
+                        
+                        if self._send_message(response, addr):
+                            print(f"📤 Enviada aceptación a {addr}")
+                        else:
+                            print(f"❌ Error enviando aceptación")
                         
                         # También enviar un heartbeat inmediato
                         heartbeat_msg = {
@@ -155,26 +205,26 @@ class GameNetwork:
                         self.connected = True
                         self.connection_established = True
                         self.last_heartbeat_received = time.time()
-                        print(f"✅ Cliente conectado: {addr}")
-                        print(f"📤 Enviado heartbeat de bienvenida a {addr}")
+                        print(f"✅ Cliente {addr} conectado exitosamente!")
                         break  # Solo aceptar una conexión
                         
                 except socket.timeout:
                     continue
                 except ConnectionResetError:
+                    print("⚠️ Conexión reseteada")
                     continue
                 except Exception as e:
-                    # Ignorar errores de conexión cerrada
-                    if "10054" not in str(e):
-                        print(f"⚠️ Error en listen_for_connections: {e}")
+                    print(f"⚠️ Error en listen_for_connections: {e}")
                     continue
         except Exception as e:
             if self.running:
                 print(f"❌ Error crítico en listen_for_connections: {e}")
     
     def _receive_messages(self):
-        """Recibe mensajes de red con mejor manejo de errores"""
+        """Recibe mensajes de red - MEJORADO"""
         buffer_size = 8192
+        
+        print("📡 Iniciando recepción de mensajes...")
         
         while self.running:
             try:
@@ -183,12 +233,19 @@ class GameNetwork:
                 
                 try:
                     message = pickle.loads(data)
-                except (pickle.UnpicklingError, EOFError):
+                except (pickle.UnpicklingError, EOFError) as e:
+                    print(f"❌ Error deserializando mensaje de {addr}: {e}")
                     continue
+                
+                # Debug: mostrar mensajes recibidos
+                if self.stats['messages_received'] % 20 == 0:  # Cada 20 mensajes
+                    print(f"📊 Mensajes recibidos: {self.stats['messages_received']}")
                 
                 # Actualizar último heartbeat para CUALQUIER mensaje recibido del peer
                 if self.peer_address and addr == self.peer_address:
                     self.last_heartbeat_received = time.time()
+                    if not self.connected:
+                        self.connected = True
                 
                 # Procesar tipos específicos
                 msg_type = message.get('type')
@@ -198,24 +255,25 @@ class GameNetwork:
                         self.peer_address = addr
                         self.connected = True
                         self.connection_established = True
-                        print("✅ Conexión aceptada por el host")
+                        print(f"✅ ¡Conexión aceptada por el host {addr}!")
+                        print(f"  📝 Mensaje: {message.get('message', 'Sin mensaje')}")
+                        
                         # Responder confirmación
                         confirm_msg = {
                             'type': MessageType.CONNECTION_CHECK.value,
                             'timestamp': time.time(),
-                            'status': 'ok'
+                            'status': 'connected'
                         }
                         self._send_message(confirm_msg, addr)
                 
                 elif msg_type == MessageType.CONNECTION_CHECK.value:
                     # Si recibimos un check, responder con otro check
-                    if self.is_host:
-                        check_response = {
-                            'type': MessageType.CONNECTION_CHECK.value,
-                            'timestamp': time.time(),
-                            'status': 'ok'
-                        }
-                        self._send_message(check_response, addr)
+                    check_response = {
+                        'type': MessageType.CONNECTION_CHECK.value,
+                        'timestamp': time.time(),
+                        'status': 'ok'
+                    }
+                    self._send_message(check_response, addr)
                 
                 # Agregar mensaje al buffer
                 with self.message_lock:
@@ -230,21 +288,24 @@ class GameNetwork:
                 continue
             except socket.error as e:
                 if self.running:
-                    # Ignorar errores de conexión cerrada (10054 en Windows)
                     err_no = e.errno if hasattr(e, 'errno') else None
-                    if err_no != 10054:
+                    if err_no not in [10054, 10053]:  # Errores de conexión cerrada
                         self.stats['connection_errors'] += 1
+                        print(f"⚠️ Socket error: {e}")
                 continue
             except Exception as e:
                 if self.running:
-                    continue
+                    print(f"⚠️ Error en receive_messages: {e}")
+                continue
     
     def _send_message(self, message, address):
-        """Envía un mensaje a una dirección específica con reintentos"""
-        max_attempts = 2
+        """Envía un mensaje con mejor manejo de errores"""
+        max_attempts = 3
         for attempt in range(max_attempts):
             try:
                 serialized = pickle.dumps(message)
+                
+                # Si el mensaje es muy grande, usar prefijo de longitud
                 if len(serialized) > 1024:
                     length_prefix = struct.pack('!I', len(serialized))
                     self.socket.sendto(length_prefix + serialized, address)
@@ -254,18 +315,21 @@ class GameNetwork:
                 self.stats['messages_sent'] += 1
                 return True
                 
-            except (socket.error, ConnectionResetError):
+            except socket.error as e:
                 if attempt < max_attempts - 1:
-                    time.sleep(0.05)
+                    print(f"⚠️ Error enviando mensaje (intento {attempt + 1}): {e}")
+                    time.sleep(0.1)
                     continue
                 else:
+                    print(f"❌ Error enviando mensaje después de {max_attempts} intentos: {e}")
                     return False
-            except Exception:
+            except Exception as e:
+                print(f"❌ Error inesperado enviando mensaje: {e}")
                 return False
     
     def send_player_state(self, player_data):
         """Envía el estado del jugador local"""
-        if self.connected and self.peer_address:
+        if self.peer_address:
             message = {
                 'type': MessageType.PLAYER_STATE.value,
                 'player_id': 1 if self.is_host else 2,
@@ -278,7 +342,7 @@ class GameNetwork:
     
     def send_bomb_placed(self, bomb_data):
         """Envía información de bomba colocada"""
-        if self.connected and self.peer_address:
+        if self.peer_address:
             message = {
                 'type': MessageType.BOMB_PLACED.value,
                 'data': bomb_data,
@@ -290,7 +354,7 @@ class GameNetwork:
     
     def send_object_destroyed(self, object_data):
         """Envía información de objeto destruido"""
-        if self.connected and self.peer_address:
+        if self.peer_address:
             message = {
                 'type': MessageType.OBJECT_DESTROYED.value,
                 'data': object_data,
@@ -300,51 +364,87 @@ class GameNetwork:
             return self._send_message(message, self.peer_address)
         return False
     
+    def send_powerup_spawned(self, powerup_data):
+        """Envía información de power-up aparecido"""
+        if self.peer_address:
+            message = {
+                'type': MessageType.POWERUP_SPAWNED.value,
+                'data': powerup_data,
+                'timestamp': time.time(),
+                'sequence': self.stats['messages_sent']
+            }
+            return self._send_message(message, self.peer_address)
+        return False
+    
+    def send_powerup_collected(self, powerup_data):
+        """Envía información de power-up recogido"""
+        if self.peer_address:
+            message = {
+                'type': MessageType.POWERUP_COLLECTED.value,
+                'data': powerup_data,
+                'timestamp': time.time(),
+                'sequence': self.stats['messages_sent']
+            }
+            return self._send_message(message, self.peer_address)
+        return False
+    
     def _heartbeat_loop(self):
-        """Envía heartbeats periódicos"""
+        """Envía heartbeats periódicos - MEJORADO"""
         last_heartbeat_sent = 0
+        
+        print("❤️ Iniciando sistema de heartbeat...")
         
         while self.running:
             current_time = time.time()
             
-            # Mostrar estadísticas cada 10 segundos
-            if current_time - self.stats['last_debug_time'] > 10 and self.connected:
-                print(f"📊 Red: Enviados={self.stats['messages_sent']}, "
-                      f"Recibidos={self.stats['messages_received']}, "
-                      f"Errores={self.stats['connection_errors']}")
+            # Mostrar estadísticas cada 15 segundos
+            if current_time - self.stats['last_debug_time'] > 15:
+                print(f"📊 Estadísticas de red:")
+                print(f"  📤 Enviados: {self.stats['messages_sent']}")
+                print(f"  📥 Recibidos: {self.stats['messages_received']}")
+                print(f"  ⚠️ Errores: {self.stats['connection_errors']}")
+                print(f"  🔗 Conectado: {self.connected}")
+                print(f"  🤝 Establecido: {self.connection_established}")
+                if self.peer_address:
+                    print(f"  👤 Peer: {self.peer_address}")
                 self.stats['last_debug_time'] = current_time
             
-            # Solo enviar heartbeats si estamos conectados
+            # Solo enviar heartbeats si estamos conectados y tenemos peer
             if self.connected and self.peer_address:
                 # Enviar heartbeat cada intervalo
                 if current_time - last_heartbeat_sent >= self.heartbeat_interval:
                     heartbeat_msg = {
                         'type': MessageType.HEARTBEAT.value,
                         'timestamp': current_time,
-                        'stats': self.stats
+                        'stats': self.stats,
+                        'status': 'alive'
                     }
                     if self._send_message(heartbeat_msg, self.peer_address):
                         last_heartbeat_sent = current_time
+                    else:
+                        print("⚠️ Error enviando heartbeat")
             
             # Verificar conexión
-            time_since_last = current_time - self.last_heartbeat_received
-            
-            if self.connected and time_since_last > self.heartbeat_timeout:
-                print(f"⚠️ Posible pérdida de conexión ({time_since_last:.1f}s sin mensajes)")
+            if self.connected:
+                time_since_last = current_time - self.last_heartbeat_received
                 
-                # Intentar verificar conexión
-                check_msg = {
-                    'type': MessageType.CONNECTION_CHECK.value,
-                    'timestamp': current_time,
-                    'check': 'alive?'
-                }
-                self._send_message(check_msg, self.peer_address)
-                
-                if time_since_last > self.heartbeat_timeout * 2:
-                    print("❌ Conexión perdida definitivamente")
-                    self.connected = False
+                if time_since_last > self.heartbeat_timeout:
+                    print(f"⚠️ Posible pérdida de conexión ({time_since_last:.1f}s sin mensajes)")
+                    
+                    # Intentar verificar conexión
+                    check_msg = {
+                        'type': MessageType.CONNECTION_CHECK.value,
+                        'timestamp': current_time,
+                        'check': 'alive?'
+                    }
+                    self._send_message(check_msg, self.peer_address)
+                    
+                    if time_since_last > self.heartbeat_timeout * 2:
+                        print("❌ Conexión perdida definitivamente")
+                        self.connected = False
+                        self.connection_established = False
             
-            time.sleep(0.1)
+            time.sleep(0.5)  # Más eficiente
     
     def get_messages(self):
         """Obtiene todos los mensajes recibidos"""
@@ -358,14 +458,17 @@ class GameNetwork:
         if not self.connected or not self.connection_established:
             return False
         
+        # Para LAN, ser más tolerante
         time_since_last = time.time() - self.last_heartbeat_received
-        is_alive = time_since_last < self.heartbeat_timeout * 1.5
+        is_alive = time_since_last < self.heartbeat_timeout * 3  # Más tolerancia
         
-        return is_alive
+        return is_alive and self.peer_address is not None
     
     def disconnect(self):
         """Cierra la conexión limpiamente"""
+        print("🔌 Cerrando conexión...")
         self.running = False
+        
         if self.socket:
             try:
                 if self.connected and self.peer_address:
@@ -378,10 +481,22 @@ class GameNetwork:
             except:
                 pass
             
-            time.sleep(0.1)
+            time.sleep(0.5)  # Dar tiempo para enviar último mensaje
+            
             try:
                 self.socket.close()
+                print("✅ Socket cerrado")
             except:
-                pass
+                print("⚠️ Error cerrando socket")
         
         print("🔌 Conexión cerrada")
+    
+    def get_debug_info(self):
+        """Obtiene información de debug"""
+        return {
+            'connected': self.connected,
+            'established': self.connection_established,
+            'peer': self.peer_address,
+            'stats': self.stats.copy(),
+            'last_heartbeat': time.time() - self.last_heartbeat_received
+        }
