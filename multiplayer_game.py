@@ -782,7 +782,7 @@ class MultiplayerGame:
         powerup_texts = [
             f"Bombas: {self.local_player.bombas_colocadas_actual}/{self.local_player.max_bombas}",
             f"Rango: {self.local_player.rango_explosion}",
-            f"Vel: x{self.local_player.velocidad_boost:.1f}"
+            # ELIMINADO: f"Vel: x{self.local_player.velocidad_boost:.1f}"
         ]
         
         for i, text in enumerate(powerup_texts):
@@ -790,7 +790,8 @@ class MultiplayerGame:
             self.JANELA.blit(powerup_text, (20, y_offset + i * 25))
         
         # Power-ups especiales activos
-        y_offset += 80
+        y_offset += 60  # Reducido porque eliminamos una línea
+        
         if self.local_player.tiene_escudo:
             escudo_text = font_small.render("🛡️ ESCUDO ACTIVO", True, (100, 180, 255))
             self.JANELA.blit(escudo_text, (20, y_offset))
@@ -806,13 +807,13 @@ class MultiplayerGame:
         remote_powerup_texts = [
             f"Bombas: ?/{self.remote_player.max_bombas}",
             f"Rango: {self.remote_player.rango_explosion}",
-            f"Vel: x{self.remote_player.velocidad_boost:.1f}"
+            # ELIMINADO: f"Vel: x{self.remote_player.velocidad_boost:.1f}"
         ]
         
         for i, text in enumerate(remote_powerup_texts):
             powerup_text = font_small.render(text, True, (200, 200, 255))
             text_rect = powerup_text.get_rect(right=self.LARGURA - 20, top=y_offset_right + i * 25)
-            self.JANELA.blit(powerup_text, text_rect)
+        self.JANELA.blit(powerup_text, text_rect)
     
     def draw_connection_status(self):
         """Dibuja el estado de la conexión - MEJORADO"""

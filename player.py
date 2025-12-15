@@ -110,12 +110,6 @@ class Player:
             self.rango_explosion += 1
             print(f"🔥 Jugador {self.id}: ¡Rango de explosión aumentado a {self.rango_explosion}!")
             
-        elif tipo_powerup == PowerUpType.SPEED_UP:
-            self.velocidad_boost = min(2.0, self.velocidad_boost + 0.3)
-            nueva_velocidad = int(self.velocidad_base * self.velocidad_boost)
-            self.velocidad = nueva_velocidad
-            print(f"⚡ Jugador {self.id}: ¡Velocidad aumentada! (x{self.velocidad_boost:.1f})")
-            
         elif tipo_powerup == PowerUpType.SHIELD:
             self.tiene_escudo = True
             self.escudo_tiempo = time.time() + 10  # 10 segundos

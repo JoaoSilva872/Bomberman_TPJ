@@ -7,7 +7,7 @@ class PowerUpType(Enum):
     """Tipos de power-ups disponibles"""
     MORE_BOMBS = 1      # Más bombas
     FIRE_UP = 2         # Rango de explosión
-    SPEED_UP = 3        # Velocidad
+    # SPEED_UP = 3        # Velocidad - ELIMINADO
     SHIELD = 4          # Escudo temporal
     REMOTE_CONTROL = 5  # Control remoto
 
@@ -18,7 +18,7 @@ class PowerUp:
     COLORS = {
         PowerUpType.MORE_BOMBS: (255, 50, 50),      # Rojo
         PowerUpType.FIRE_UP: (255, 140, 0),         # Naranja
-        PowerUpType.SPEED_UP: (50, 255, 50),        # Verde
+        # PowerUpType.SPEED_UP: (50, 255, 50),        # Verde - ELIMINADO
         PowerUpType.SHIELD: (100, 180, 255),        # Azul claro
         PowerUpType.REMOTE_CONTROL: (180, 50, 230), # Púrpura
     }
@@ -27,7 +27,7 @@ class PowerUp:
     SYMBOLS = {
         PowerUpType.MORE_BOMBS: "B+",
         PowerUpType.FIRE_UP: "F+",
-        PowerUpType.SPEED_UP: "S+",
+        # PowerUpType.SPEED_UP: "S+",  # ELIMINADO
         PowerUpType.SHIELD: "SHD",
         PowerUpType.REMOTE_CONTROL: "R",
     }
@@ -36,7 +36,7 @@ class PowerUp:
     NAMES = {
         PowerUpType.MORE_BOMBS: "Más Bombas",
         PowerUpType.FIRE_UP: "Rango+",
-        PowerUpType.SPEED_UP: "Velocidad",
+        # PowerUpType.SPEED_UP: "Velocidad",  # ELIMINADO
         PowerUpType.SHIELD: "Escudo",
         PowerUpType.REMOTE_CONTROL: "Control Remoto",
     }
@@ -141,16 +141,16 @@ class PowerUpSystem:
         self.powerups = []
         self.probabilidad_spawn = probabilidad_spawn
         
-        # Power-ups disponibles para spawnear con probabilidades
+        # Power-ups disponibles para spawnear con probabilidades (sin SPEED_UP)
         self.tipos_disponibles = [
-            PowerUpType.MORE_BOMBS,    # 35%
-            PowerUpType.FIRE_UP,       # 30%
-            PowerUpType.SPEED_UP,      # 20%
-            PowerUpType.SHIELD,        # 10%
-            PowerUpType.REMOTE_CONTROL # 5%
+            PowerUpType.MORE_BOMBS,    # 40%
+            PowerUpType.FIRE_UP,       # 35%
+            PowerUpType.SHIELD,        # 15%
+            PowerUpType.REMOTE_CONTROL # 10%
         ]
         
-        self.probabilidades = [0.35, 0.30, 0.20, 0.10, 0.05]
+        # Ajustar probabilidades para que sumen 1
+        self.probabilidades = [0.40, 0.35, 0.15, 0.10]
     
     def intentar_spawn(self, x, y, tamaño):
         """Intenta spawnear un power-up en una posición"""

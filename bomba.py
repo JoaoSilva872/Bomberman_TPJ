@@ -37,6 +37,19 @@ class Bomba:
         except:
             print("⚠️ Advertencia: No se pudo cargar bomb.png. Usando gráfico por defecto.")
             self.imagem_bomba = None
+    
+    def danar_enemigos(self, enemigos):
+        """Verifica si la explosión daña a los enemigos"""
+        if not self.explotada or not self.explosion_activa():
+            return
+        
+        for enemigo in enemigos:
+            if enemigo.activo:
+                for rect in self.explosion_tiles:
+                    if enemigo.rect.colliderect(rect):
+                        enemigo.recibir_dano(1)
+                        self.causou_dano = True
+                        return
 
     def actualizar_colision(self, jugador_x, jugador_y, jugador_id, grid_size):
         """Actualiza el estado de colisión basado en la posición del jugador"""
