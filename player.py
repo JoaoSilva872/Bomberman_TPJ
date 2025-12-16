@@ -27,7 +27,7 @@ class Player:
         self.max_bombas = 1  # Límite inicial de bombas
         self.bombas_colocadas_actual = 0  # Contador actual
         self.rango_explosion = 1  # Rango inicial (1 bloque)
-        self.velocidad_base = velocidad
+        self.velocidad_base = velocidad * 1.5
         self.velocidad_boost = 1.0  # Multiplicador de velocidad
         
         # Power-ups temporales
