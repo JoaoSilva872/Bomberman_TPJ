@@ -12,8 +12,8 @@ def main():
         tipo_juego = menu.executar()
         
         if tipo_juego == "single":
-            # Juego individual
-            print("🎮 Iniciando juego individual...")
+            # Juego individual con niveles
+            print("🎮 Iniciando juego individual con niveles...")
             game = Game()
             game.run()
         
@@ -26,7 +26,7 @@ def main():
                 continue  # Volver al menú principal
             elif modo_multijugador == "host":
                 print("🎮 Iniciando como Host...")
-                game = MultiplayerGame(is_host=True)
+                game = MultiplayerGame(is_host=True, host_ip='127.0.0.1')
                 game.run()
             elif modo_multijugador == "client":
                 if ip:
