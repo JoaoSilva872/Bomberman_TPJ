@@ -85,20 +85,6 @@ class Button:
         
         surface.blit(text_shadow, shadow_rect)
         surface.blit(text_surf, text_rect)
-        
-        # Icono según el tipo de botón
-        icon = ""
-        if "CREAR" in self.text:
-            icon = "🎮"
-        elif "UNIRSE" in self.text:
-            icon = "🔗"
-        elif "VOLVER" in self.text:
-            icon = "←"
-            
-        if icon:
-            icon_surf = font.render(icon, True, self.text_color)
-            icon_rect = icon_surf.get_rect(midright=(self.rect.left - 20, self.rect.centery))
-            surface.blit(icon_surf, icon_rect)
 
 class InputField:
     """Campo de entrada con efectos visuales"""
@@ -433,7 +419,7 @@ class MultiplayerMenu:
         self.JANELA.blit(status_panel, (status_x, status_y))
         
         # Título del estado
-        status_title = self.font_small.render("📡 ESTADO DE RED", True, (180, 220, 255))
+        status_title = self.font_small.render("ESTADO DE RED", True, (180, 220, 255))
         self.JANELA.blit(status_title, (status_x + 10, status_y + 10))
         
         # IP local
@@ -582,18 +568,18 @@ class MultiplayerMenu:
                     mouse_pos = pygame.mouse.get_pos()
                     
                     if self.botones['host'].rect.collidepoint(mouse_pos):
-                        print("🎮 Modo seleccionado: Host")
+                        print("Modo seleccionado: Host")
                         return ("host", None)
                     
                     if self.botones['client'].rect.collidepoint(mouse_pos):
                         if self.validar_ip(self.input_ip.text):
-                            print(f"🎮 Conectando a: {self.input_ip.text}")
+                            print(f"Conectando a: {self.input_ip.text}")
                             return ("client", self.input_ip.text.strip())
                         else:
-                            print(f"❌ IP inválida: {self.input_ip.text}")
+                            print(f"IP inválida: {self.input_ip.text}")
                     
                     if self.botones['back'].rect.collidepoint(mouse_pos):
-                        print("↩️ Volviendo al menú principal")
+                        print("Volviendo al menú principal")
                         return ("back", None)
                 
                 # Teclas de acceso rápido

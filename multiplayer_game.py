@@ -758,7 +758,7 @@ class MultiplayerGame:
     
     def render(self):
         """Renderiza todos los elementos del juego"""
-        # 1. Dibujar mapa
+        # 1. Dibujar mapa (directamente en la ventana)
         self.mapa.dibujar(self.JANELA)
         
         # 2. Dibujar objetos no destruidos
@@ -783,7 +783,7 @@ class MultiplayerGame:
         # 7. Dibujar jugador local (encima)
         self.local_player.dibujar(self.JANELA, pygame.time.get_ticks() - self.tiempo_inicio)
         
-        # 8. Dibujar HUD
+        # 8. Dibujar HUD (en los primeros 60px)
         self.draw_hud()
         
         # 9. Dibujar estado de conexión
@@ -792,142 +792,102 @@ class MultiplayerGame:
         pygame.display.update()
     
     def draw_hud(self):
-        """Dibuja la interfaz de usuario mejorada"""
-        # Fondo general del HUD
-        hud_bg = pygame.Surface((self.LARGURA, 150), pygame.SRCALPHA)
+        """Dibuja la interfaz de usuario - AHORA 60px de altura"""
+        # Fondo general del HUD - REDUCIDO A 60px
+        hud_bg = pygame.Surface((self.LARGURA, 60), pygame.SRCALPHA)
         hud_bg.fill((20, 20, 40, 200))
         self.JANELA.blit(hud_bg, (0, 0))
         
-        font = pygame.font.Font(None, 36)
-        font_small = pygame.font.Font(None, 28)
-        font_large = pygame.font.Font(None, 42)
+        font = pygame.font.Font(None, 32)  # Reducido de 36
+        font_small = pygame.font.Font(None, 24)  # Reducido de 28
         
-        # Título del modo
-        mode_text = font_large.render("⚔️ MODO MULTIJUGADOR ⚔️", True, (255, 215, 0))
-        mode_rect = mode_text.get_rect(center=(self.LARGURA//2, 30))
-        self.JANELA.blit(mode_text, mode_rect)
-        
-        # Panel jugador local (izquierda)
-        local_panel = pygame.Surface((300, 90), pygame.SRCALPHA)
+        # Panel jugador local (izquierda) - AJUSTADO
+        local_panel = pygame.Surface((250, 50), pygame.SRCALPHA)
         local_panel.fill((0, 40, 80, 180))
-        pygame.draw.rect(local_panel, (0, 150, 255), (0, 0, 300, 90), 3)
-        self.JANELA.blit(local_panel, (20, 70))
+        pygame.draw.rect(local_panel, (0, 150, 255), (0, 0, 250, 50), 2)
+        self.JANELA.blit(local_panel, (10, 5))
         
         # Vida local
-        local_life = font.render(f"❤️ TÚ: {self.local_player.life} vidas", True, (100, 200, 255))
-        self.JANELA.blit(local_life, (35, 80))
+        local_life = font.render(f"❤️ {self.local_player.life}", True, (100, 200, 255))
+        self.JANELA.blit(local_life, (20, 10))
         
         # Stats locales
         local_stats = font_small.render(
-            f"💣 {self.local_player.bombas_colocadas_actual}/{self.local_player.max_bombas} " +
-            f"🔥 {self.local_player.rango_explosion}",
+            f"💣 {self.local_player.bombas_colocadas_actual}/{self.local_player.max_bombas}",
             True, (200, 220, 255)
         )
-        self.JANELA.blit(local_stats, (35, 115))
+        self.JANELA.blit(local_stats, (20, 40))
         
-        # Panel jugador remoto (derecha)
-        remote_panel = pygame.Surface((300, 90), pygame.SRCALPHA)
+        # Panel jugador remoto (derecha) - AJUSTADO
+        remote_panel = pygame.Surface((250, 50), pygame.SRCALPHA)
         remote_panel.fill((80, 0, 40, 180))
-        pygame.draw.rect(remote_panel, (255, 50, 100), (0, 0, 300, 90), 3)
-        self.JANELA.blit(remote_panel, (self.LARGURA - 320, 70))
+        pygame.draw.rect(remote_panel, (255, 50, 100), (0, 0, 250, 50), 2)
+        self.JANELA.blit(remote_panel, (self.LARGURA - 260, 5))
         
         # Vida remota
-        remote_life = font.render(f"💀 RIVAL: {self.remote_player.life} vidas", True, (255, 150, 150))
-        remote_rect = remote_life.get_rect(right=self.LARGURA - 35, top=80)
+        remote_life = font.render(f"💀 {self.remote_player.life}", True, (255, 150, 150))
+        remote_rect = remote_life.get_rect(right=self.LARGURA - 20, top=10)
         self.JANELA.blit(remote_life, remote_rect)
         
         # Stats remotos
         remote_stats = font_small.render(
-            f"💣 ?/{self.remote_player.max_bombas} " +
-            f"🔥 {self.remote_player.rango_explosion}",
+            f"💣 ?/{self.remote_player.max_bombas}",
             True, (255, 200, 200)
         )
-        remote_stats_rect = remote_stats.get_rect(right=self.LARGURA - 35, top=115)
+        remote_stats_rect = remote_stats.get_rect(right=self.LARGURA - 20, top=40)
         self.JANELA.blit(remote_stats, remote_stats_rect)
         
-        # Power-ups especiales (centro inferior)
-        y_special = 80
+        # Indicadores de power-ups (CENTRO SUPERIOR)
+        center_x = self.LARGURA // 2
+        y_offset = 10
+        
+        # Escudo
         if self.local_player.tiene_escudo:
-            escudo_panel = pygame.Surface((180, 30), pygame.SRCALPHA)
-            escudo_panel.fill((0, 80, 160, 180))
-            self.JANELA.blit(escudo_panel, (self.LARGURA//2 - 200, y_special))
-            
-            escudo_text = font_small.render("🛡️ ESCUDO ACTIVO", True, (150, 220, 255))
-            escudo_rect = escudo_text.get_rect(center=(self.LARGURA//2 - 110, y_special + 15))
-            self.JANELA.blit(escudo_text, escudo_rect)
-            y_special += 35
+            escudo_icon = font_small.render("🛡️", True, (150, 220, 255))
+            escudo_rect = escudo_icon.get_rect(center=(center_x - 30, y_offset + 20))
+            self.JANELA.blit(escudo_icon, escudo_rect)
         
+        # Control remoto
         if self.local_player.tiene_control_remoto:
-            control_panel = pygame.Surface((180, 30), pygame.SRCALPHA)
-            control_panel.fill((80, 0, 120, 180))
-            self.JANELA.blit(control_panel, (self.LARGURA//2 + 20, y_special - 35))
-            
-            control_text = font_small.render("🎮 CTRL REMOTO (R)", True, (220, 150, 255))
-            control_rect = control_text.get_rect(center=(self.LARGURA//2 + 110, y_special - 20))
-            self.JANELA.blit(control_text, control_rect)
+            control_icon = font_small.render("🎮", True, (220, 150, 255))
+            control_rect = control_icon.get_rect(center=(center_x + 30, y_offset + 20))
+            self.JANELA.blit(control_icon, control_rect)
         
-        # Indicador de bomba activa
+        # Indicador de rango (debajo de los iconos)
+        range_text = font_small.render(f"🔥{self.local_player.rango_explosion}", True, (255, 200, 100))
+        range_rect = range_text.get_rect(center=(center_x, y_offset + 40))
+        self.JANELA.blit(range_text, range_rect)
+        
+        # Indicador de bomba activa (arriba del centro)
         if self.local_player.bomba_colocada:
-            bomba_panel = pygame.Surface((200, 35), pygame.SRCALPHA)
-            bomba_panel.fill((255, 80, 0, 180))
-            self.JANELA.blit(bomba_panel, (self.LARGURA//2 - 100, 120))
-            
-            bomba_text = font.render("💣 ¡BOMBA ACTIVA!", True, (255, 255, 200))
-            bomba_rect = bomba_text.get_rect(center=(self.LARGURA//2, 137))
-            self.JANELA.blit(bomba_text, bomba_rect)
+            bomba_indicator = font_small.render("💣 ACTIVA", True, (255, 100, 100))
+            bomba_rect = bomba_indicator.get_rect(center=(center_x, y_offset))
+            self.JANELA.blit(bomba_indicator, bomba_rect)
     
     def draw_connection_status(self):
-        """Dibuja el estado de la conexión mejorado"""
-        # Panel de estado de conexión (esquina superior derecha)
-        status_panel = pygame.Surface((220, 70), pygame.SRCALPHA)
+        """Dibuja el estado de la conexión - AJUSTADO para 60px"""
+        # Panel de estado de conexión (esquina superior derecha) - MÁS PEQUEÑO
+        status_panel = pygame.Surface((180, 25), pygame.SRCALPHA)
         status_panel.fill((0, 0, 0, 180))
-        pygame.draw.rect(status_panel, (100, 100, 200), (0, 0, 220, 70), 2)
         
-        self.JANELA.blit(status_panel, (self.LARGURA - 230, 10))
-        
-        font = pygame.font.Font(None, 28)
-        font_small = pygame.font.Font(None, 22)
+        font_small = pygame.font.Font(None, 20)  # Más pequeño
         
         if self.network.is_connected():
-            # Estado de conexión
-            status_icon = "🟢" if self.network.is_connected() else "🔴"
-            status_color = (0, 255, 0) if self.network.is_connected() else (255, 0, 0)
-            
-            status = font.render(f"{status_icon} CONECTADO", True, status_color)
-            status_rect = status.get_rect(right=self.LARGURA - 20, top=20)
-            self.JANELA.blit(status, status_rect)
-            
-            # Ping
-            time_since = time.time() - self.network.last_heartbeat_received
-            ping_ms = int(time_since * 500)
-            
-            # Color del ping según calidad
-            if ping_ms < 100:
-                ping_color = (0, 255, 0)
-            elif ping_ms < 200:
-                ping_color = (255, 255, 0)
-            elif ping_ms < 400:
-                ping_color = (255, 150, 0)
-            else:
-                ping_color = (255, 0, 0)
-            
-            ping = font_small.render(f"📶 Ping: ~{ping_ms}ms", True, ping_color)
-            ping_rect = ping.get_rect(right=self.LARGURA - 20, top=45)
-            self.JANELA.blit(ping, ping_rect)
-            
-            # Estadísticas rápidas
-            stats_text = f"↑{self.network_stats['player_states_sent']} ↓{self.network.stats['messages_received']}"
-            stats = font_small.render(stats_text, True, (200, 200, 200))
-            stats_rect = stats.get_rect(right=self.LARGURA - 20, top=65)
-            self.JANELA.blit(stats, stats_rect)
+            status_icon = "🟢"
+            status_color = (0, 255, 0)
+            status_text = f"{status_icon} ONLINE"
         else:
-            status = font.render("🔴 DESCONECTADO", True, (255, 0, 0))
-            status_rect = status.get_rect(right=self.LARGURA - 20, top=20)
-            self.JANELA.blit(status, status_rect)
-            
-            recon_text = font_small.render("Reconectando...", True, (255, 150, 0))
-            recon_rect = recon_text.get_rect(right=self.LARGURA - 20, top=45)
-            self.JANELA.blit(recon_text, recon_rect)
+            status_icon = "🔴"
+            status_color = (255, 0, 0)
+            status_text = f"{status_icon} OFFLINE"
+        
+        # Solo mostrar estado básico
+        status = font_small.render(status_text, True, status_color)
+        status_rect = status.get_rect(center=(90, 12))
+        status_panel.blit(status, status_rect)
+        
+        # Posicionar en esquina superior derecha
+        self.JANELA.blit(status_panel, (self.LARGURA - 185, 30))
     
     def run(self):
         """Bucle principal del juego - MEJORADO"""

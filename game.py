@@ -225,11 +225,11 @@ class Game:
         
         # Si hay más niveles, iniciar el siguiente
         if self.nivel_actual < len(self.niveles):
-            print(f"\n🎮 Cargando nivel {self.nivel_actual + 1}...")
+            print(f"\nCargando nivel {self.nivel_actual + 1}...")
             self.iniciar_nivel()
         else:
             # Si no hay más niveles, victoria total
-            print("\n🏆 ¡HAS COMPLETADO TODOS LOS NIVELES!")
+            print("\n¡HAS COMPLETADO TODOS LOS NIVELES!")
             self.mostrar_victoria_final()
 
     def mostrar_victoria_final(self):
@@ -241,7 +241,7 @@ class Game:
         font_small = pygame.font.Font(None, 28)
         
         # Título
-        victoria_text = font_large.render("¡VICTORIA TOTAL!", True, (0, 255, 0))
+        victoria_text = font_large.render("¡VICTORIA!", True, (0, 255, 0))
         victoria_rect = victoria_text.get_rect(center=(self.LARGURA//2, self.ALTURA//2 - 100))
         
         # Mensaje
